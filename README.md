@@ -81,7 +81,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ## 📦 2. Using the Python SDK (vieneu) <a name="sdk"></a>
 
-The `vieneu` SDK defaults to **Standard mode** (0.3B GGUF + ONNX) when used locally, providing a perfect balance of high audio quality and real-time performance on any CPU or GPU.
+The `vieneu` SDK defaults to **Standard mode** (VieNeu-TTS-v2 GGUF + ONNX) when used locally, providing a perfect balance of high audio quality and real-time performance on any CPU or GPU.
 
 ### Quick Start
 ```bash
