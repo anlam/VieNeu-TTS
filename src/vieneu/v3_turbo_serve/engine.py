@@ -64,7 +64,7 @@ class V3TurboBatchEngine:
         requests: List[dict],
         *,
         temperature: float = 0.8,
-        top_k: int = 25,
+        top_k: int = 50,
         top_p: float = 0.95,
         repetition_penalty: float = 1.2,
         max_new_frames: int = 300,

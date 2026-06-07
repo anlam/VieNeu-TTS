@@ -61,7 +61,7 @@ def generate_frame_batched(
     backbone_hidden: torch.Tensor,            # (B, H) — backbone hidden for each sequence
     *,
     temperature=0.8,
-    top_k: int = 25,
+    top_k: int = 50,
     top_p: float = 0.95,
     repetition_penalty: float = 1.0,
     history=None,   # optional list (len B) of list (len n_vq) of seen-code sets, updated in place

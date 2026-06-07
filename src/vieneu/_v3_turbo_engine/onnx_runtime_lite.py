@@ -235,7 +235,7 @@ class OnnxV3LiteEngine:
     # ── Public API ────────────────────────────────────────────────────────
     def infer(self, text: str = "", ref_audio=None, ref_codes=None, ref_text=None,
               phonemes: Optional[str] = None, ref_phonemes=None, emotion: str = "natural",
-              voice_token_id: Optional[int] = None, temperature: float = 0.8, top_k: int = 25,
+              voice_token_id: Optional[int] = None, temperature: float = 0.8, top_k: int = 50,
               top_p: float = 0.95, max_new_frames: int = 300, repetition_penalty: float = 1.2):
         if ref_codes is None and ref_audio is not None:
             ref_codes = self._encode_ref(ref_audio)

@@ -149,7 +149,7 @@ class VieNeuTTSv3Turbo:
             return int(voice_token_id)
         return self.config.emotion_0_token_id if emotion == 'natural' else self.config.emotion_4_token_id
 
-    def infer(self, text: str, ref_audio: Optional[str]=None, ref_codes: Optional[np.ndarray]=None, ref_text: Optional[str]=None, phonemes: Optional[str]=None, ref_phonemes: Optional[str]=None, emotion: str='natural', voice_token_id: Optional[int]=None, temperature: float=0.8, top_k: int=25, top_p: float=0.95, max_new_frames: int=300, repetition_penalty: float=1.2) -> np.ndarray:
+    def infer(self, text: str, ref_audio: Optional[str]=None, ref_codes: Optional[np.ndarray]=None, ref_text: Optional[str]=None, phonemes: Optional[str]=None, ref_phonemes: Optional[str]=None, emotion: str='natural', voice_token_id: Optional[int]=None, temperature: float=0.8, top_k: int=50, top_p: float=0.95, max_new_frames: int=300, repetition_penalty: float=1.2) -> np.ndarray:
         """Synthesize one utterance into a float32, 48 kHz mono waveform.
 
         Args:
@@ -171,7 +171,7 @@ class VieNeuTTSv3Turbo:
         codes = self._generate_codes(text, ref_audio, ref_codes, ref_text, emotion, temperature, top_k, top_p, max_new_frames, phonemes=phonemes, ref_phonemes=ref_phonemes, repetition_penalty=repetition_penalty, voice_token_id=voice_token_id)
         return self._decode_codes(codes)
 
-    def infer_stream(self, text: str, ref_audio: Optional[str]=None, ref_codes: Optional[np.ndarray]=None, ref_text: Optional[str]=None, emotion: str='natural', voice_token_id: Optional[int]=None, temperature: float=0.8, top_k: int=25, top_p: float=0.95, max_new_frames: int=300, chunk_frames: int=25, repetition_penalty: float=1.2) -> Generator[np.ndarray, None, None]:
+    def infer_stream(self, text: str, ref_audio: Optional[str]=None, ref_codes: Optional[np.ndarray]=None, ref_text: Optional[str]=None, emotion: str='natural', voice_token_id: Optional[int]=None, temperature: float=0.8, top_k: int=50, top_p: float=0.95, max_new_frames: int=300, chunk_frames: int=25, repetition_penalty: float=1.2) -> Generator[np.ndarray, None, None]:
         """Like :meth:`infer` but yields the waveform in chunks for low latency.
 
         ``chunk_frames`` is how many frames to accumulate before decoding and

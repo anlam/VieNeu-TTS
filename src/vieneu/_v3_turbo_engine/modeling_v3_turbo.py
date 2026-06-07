@@ -173,7 +173,7 @@ class VieNeuV3TurboForTTS(PreTrainedModel):
         return embeds
 
     @torch.no_grad()
-    def decode_one_frame(self, global_hidden_step: torch.Tensor, text_token_id: Optional[torch.LongTensor]=None, temperature: float=0.8, top_k: int=25, audio_top_p: float=0.95, repetition_penalty: float=1.0, history_by_channel=None) -> tuple[torch.LongTensor, torch.Tensor]:
+    def decode_one_frame(self, global_hidden_step: torch.Tensor, text_token_id: Optional[torch.LongTensor]=None, temperature: float=0.8, top_k: int=50, audio_top_p: float=0.95, repetition_penalty: float=1.0, history_by_channel=None) -> tuple[torch.LongTensor, torch.Tensor]:
         """Sample one audio frame (the 16 RVQ codes) from one backbone hidden step.
 
         This is the core inference step: given the backbone's hidden state for the
