@@ -12,7 +12,9 @@ required-environments = [
 override-dependencies = [
     "nvidia-nccl-cu12; sys_platform == 'linux'",
 ]
-# default-groups = ["web"]
+# uv mặc định cài nhóm `dev`; đặt rỗng để `uv sync` chỉ cài core torch-free.
+# Muốn dev/test: `uv sync --group dev`. Muốn GPU: `uv sync --group gpu` hoặc `--extra gpu`.
+default-groups = []
 
 [[tool.uv.index]]
 name = "pytorch"

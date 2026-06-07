@@ -5463,7 +5463,7 @@ wheels = [
 
 [[package]]
 name = "vieneu"
-version = "2.7.0"
+version = "3.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "gradio" },
@@ -5504,8 +5504,12 @@ gpu = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "librosa" },
+    { name = "neucodec" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "transformers", version = "4.57.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and sys_platform == 'win32') or (python_full_version == '3.12.*' and sys_platform == 'win32') or (sys_platform != 'darwin' and sys_platform != 'win32')" },
+    { name = "transformers", version = "5.7.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version == '3.11.*' and sys_platform == 'win32') or (python_full_version >= '3.13' and sys_platform == 'win32') or sys_platform == 'darwin'" },
 ]
 gpu = [
     { name = "accelerate", marker = "sys_platform == 'darwin'" },
@@ -5562,8 +5566,11 @@ provides-extras = ["gpu"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "librosa", specifier = ">=0.11.0" },
+    { name = "neucodec", specifier = ">=0.0.4" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "transformers" },
 ]
 gpu = [
     { name = "accelerate", marker = "sys_platform == 'darwin'" },
