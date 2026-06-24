@@ -19,3 +19,6 @@ finetune/output/
 
 # Merged Models
 merged_models_cache/
+
+*.wav
+book.txt
