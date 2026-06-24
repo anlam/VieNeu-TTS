@@ -22,6 +22,7 @@ merged_models_cache/
 
 *.wav
 book.txt
+audiobook.log
 
 outputs/
 output/

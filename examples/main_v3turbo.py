@@ -17,6 +17,9 @@ for label, voice_id in tts.list_preset_voices():
     print(label, voice_id)
 audio = tts.infer("Mình là Xuân Vĩnh nè!", voice="Xuân Vĩnh")
 tts.save(audio, "output_Xuân Vĩnh.wav")
+
+audio = tts.infer("Đây là giọng của Bình An", voice="Bình An")
+tts.save(audio, "sample_BinhAn.wav")
 # # 3. Emotion / non-verbal cues — EXPERIMENTAL: [cười] [thở dài] [hắng giọng]
 # audio = tts.infer("Nghe hay quá đi [cười]. Để mình nói tiếp [hắng giọng].", voice="Ngọc Linh")
 
