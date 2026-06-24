@@ -35,13 +35,15 @@ _CHAPTER_RE = re.compile(
 
 
 def slugify(title: str, max_len: int = 40) -> str:
-    """Convert a title to a safe ASCII filename slug, preserving Vietnamese letters."""
-    # Decompose Unicode so diacritics become separate combining chars, then drop them
+    """Convert a title to a safe ASCII filename slug."""
+    # đ/Đ have no NFKD decomposition so must be mapped manually before normalization
+    title = title.replace("đ", "d").replace("Đ", "D")
     nfkd = unicodedata.normalize("NFKD", title)
     ascii_str = nfkd.encode("ascii", "ignore").decode("ascii")
     slug = re.sub(r"[^\w\s-]", "", ascii_str).strip().lower()
     slug = re.sub(r"[\s_-]+", "_", slug)
     return slug[:max_len].strip("_") or "chapter"
+
 
 
 def split_into_chapters(text: str) -> list[tuple[str, str]]:
