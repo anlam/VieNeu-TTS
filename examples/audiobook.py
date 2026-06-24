@@ -104,6 +104,7 @@ def main() -> None:
         voice=args.voice,
         ref_audio=args.ref_audio,
         silence_p=args.silence,
+        temperature=0.7,
     )
 
     chapter_wavs: list[np.ndarray] = []
