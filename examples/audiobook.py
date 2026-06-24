@@ -16,6 +16,7 @@ Rerunning skips chapters whose output file already exists.
 import argparse
 import re
 import sys
+import time
 import unicodedata
 from pathlib import Path
 
@@ -99,6 +100,7 @@ def main() -> None:
 
     tts = Vieneu()
     sample_rate = tts.sample_rate
+    total_start = time.time()
 
     infer_kwargs = dict(
         voice=args.voice,
@@ -128,20 +130,28 @@ def main() -> None:
 
         print(f"  Rendering chapter {idx}/{len(chapters)}: {title[:60]}")
 
+        t0 = time.time()
         title_wav = tts.infer(title, **infer_kwargs)
         body_wav = tts.infer(body, **infer_kwargs)
+        elapsed = time.time() - t0
 
         gap_samples = int(args.title_gap * sample_rate)
         audio = np.concatenate([title_wav, np.zeros(gap_samples, dtype=np.float32), body_wav])
 
         tts.save(audio, str(out_path))
         chapter_wavs.append(audio)
-        print(f"    → {out_path}  ({len(audio)/sample_rate:.1f}s)")
+        audio_dur = len(audio) / sample_rate
+        print(f"    → {out_path}  (audio: {audio_dur:.1f}s | render: {elapsed:.1f}s | RTF: {elapsed/audio_dur:.2f}x)")
 
     if not chapter_wavs:
         sys.exit("No audio was generated.")
 
+    total_elapsed = time.time() - total_start
+    total_audio = sum(len(w) for w in chapter_wavs) / sample_rate
+    print(f"\nTotal: {len(chapter_wavs)} chapter(s) | audio: {total_audio/60:.1f} min | time: {total_elapsed:.1f}s | RTF: {total_elapsed/total_audio:.2f}x")
+
     if args.merge:
+        t0 = time.time()
         gap_samples = int(args.chapter_gap * sample_rate)
         gap = np.zeros(gap_samples, dtype=np.float32)
         combined = np.concatenate(
@@ -149,7 +159,8 @@ def main() -> None:
         )
         full_path = out_dir / "full_book.wav"
         tts.save(combined, str(full_path))
-        print(f"\nFull audiobook saved → {full_path}  ({len(combined)/sample_rate/60:.1f} min)")
+        elapsed = time.time() - t0
+        print(f"\nFull audiobook saved → {full_path}  ({len(combined)/sample_rate/60:.1f} min | merge: {elapsed:.1f}s)")
 
 
 if __name__ == "__main__":
