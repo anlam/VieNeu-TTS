@@ -34,6 +34,17 @@ _CHAPTER_RE = re.compile(
 )
 
 
+def fmt_duration(seconds: float) -> str:
+    seconds = int(seconds)
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}h {m:02d}m {s:02d}s"
+    if m:
+        return f"{m}m {s:02d}s"
+    return f"{s}s"
+
+
 def slugify(title: str, max_len: int = 40) -> str:
     """Convert a title to a safe ASCII filename slug."""
     # đ/Đ have no NFKD decomposition so must be mapped manually before normalization
@@ -143,14 +154,14 @@ def main() -> None:
         tts.save(audio, str(out_path))
         chapter_wavs.append(audio)
         audio_dur = len(audio) / sample_rate
-        print(f"    → {out_path}  (audio: {audio_dur:.1f}s | render: {elapsed:.1f}s | RTF: {elapsed/audio_dur:.2f}x)")
+        print(f"    → {out_path}  (audio: {fmt_duration(audio_dur)} | render: {fmt_duration(elapsed)} | RTF: {elapsed/audio_dur:.2f}x)")
 
     if not chapter_wavs:
         sys.exit("No audio was generated.")
 
     total_elapsed = time.time() - total_start
     total_audio = sum(len(w) for w in chapter_wavs) / sample_rate
-    print(f"\nTotal: {len(chapter_wavs)} chapter(s) | audio: {total_audio/60:.1f} min | time: {total_elapsed:.1f}s | RTF: {total_elapsed/total_audio:.2f}x")
+    print(f"\nTotal: {len(chapter_wavs)} chapter(s) | audio: {fmt_duration(total_audio)} | time: {fmt_duration(total_elapsed)} | RTF: {total_elapsed/total_audio:.2f}x")
 
     if args.merge:
         t0 = time.time()
@@ -162,7 +173,7 @@ def main() -> None:
         full_path = out_dir / "full_book.wav"
         tts.save(combined, str(full_path))
         elapsed = time.time() - t0
-        print(f"\nFull audiobook saved → {full_path}  ({len(combined)/sample_rate/60:.1f} min | merge: {elapsed:.1f}s)")
+        print(f"\nFull audiobook saved → {full_path}  (audio: {fmt_duration(len(combined)/sample_rate)} | merge: {fmt_duration(elapsed)})")
 
 
 if __name__ == "__main__":
