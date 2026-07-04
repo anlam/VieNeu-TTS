@@ -99,27 +99,42 @@ pip install "vieneu[gpu]"
 ```python
 from vieneu import Vieneu
 
-# Mặc định = v3 Turbo. CPU → ONNX (không torch); GPU → PyTorch (tự nhận diện).
+# Mặc định = v3 Turbo (48 kHz). GPU → PyTorch (tự nhận diện).
 tts = Vieneu()
 
-# 1. Giọng mặc định (Ngọc Lan) — 48 kHz, không cần audio mẫu
-audio = tts.infer("Xin chào, đây là VieNeu-TTS phiên bản ba Turbo.")
+# 1. Giọng dựng sẵn theo tên — không cần audio mẫu
+audio = tts.infer("Xin chào, đây là VieNeu-TTS.", voice="Trúc Ly")
 tts.save(audio, "output.wav")
 
-# 2. Chọn giọng dựng sẵn theo tên
+# Liệt kê các giọng dựng sẵn
 for label, voice_id in tts.list_preset_voices():
     print(label, voice_id)
-audio = tts.infer("Mình là Xuân Vĩnh nè!", voice="Xuân Vĩnh")
+```
 
-# 3. Tag cảm xúc — THỬ NGHIỆM: [cười] [thở dài] [hắng giọng]
-audio = tts.infer("Nghe hay quá đi [cười]. Để mình nói tiếp [hắng giọng].", voice="Ngọc Linh")
+### Phong cách đọc
 
-# 4. Clone giọng tức thì từ 3–5 giây audio mẫu
-audio = tts.infer("Đây là giọng được nhân bản tức thì.", ref_audio="my_voice.wav")
+Chọn cách đọc bằng `style` (mặc định `"tu_nhien"`):
+
+| `style`        | Ý nghĩa        |
+| -------------- | -------------- |
+| `"tu_nhien"`   | Tự nhiên / hội thoại |
+| `"tin_tuc"`    | Tin tức        |
+| `"doc_truyen"` | Kể chuyện      |
+
+```python
+audio = tts.infer("Bản tin sáng nay.", voice="Quang Sơn", style="tin_tuc")
+```
+
+### Tag cảm xúc (thử nghiệm)
+
+Chèn trực tiếp trong văn bản: `[cười]`, `[thở dài]`, `[hắng giọng]`.
+
+```python
+audio = tts.infer("Nghe hay quá đi [cười]. Để mình nói tiếp [hắng giọng].", voice="Trúc Ly")
 ```
 
 > [!TIP]
-> Ép backend bằng `Vieneu(backend="onnx")` (không torch, CPU) hoặc `Vieneu(backend="pytorch")` (GPU). Temperature ~0.8 ổn định nhất.
+> Temperature ~0.8 ổn định nhất.
 
 ### Model cũ — v1 / v2 (cần `pip install "vieneu[gpu]"`)
 ```python
@@ -135,25 +150,48 @@ tts.save(audio, "v2_output.wav")
 ```
 
 ### 🦜 Clone giọng nói Zero-shot (SDK) <a name="cloning"></a>
-Clone bất kỳ giọng nào chỉ với **3-5 giây** âm thanh — v3 Turbo clone trực tiếp từ clip, không cần văn bản mẫu.
+Clone bất kỳ giọng nào từ một clip ngắn. Clip mẫu được **tự khử nhiễu nền** và **cắt còn ≤ 8 giây** trước khi clone — cứ để `denoise=True` trừ khi clip đã sạch.
 
 ```python
 from vieneu import Vieneu
 
-tts = Vieneu()   # mặc định v3 Turbo (không torch trên CPU)
+tts = Vieneu()
 
-# Truyền clip mẫu — mã hóa một lần rồi tái dùng cho mọi lần gọi.
+# Clone trực tiếp từ clip mẫu (3–8 giây)
 audio = tts.infer(
-    text="Đây là giọng nói được clone trực tiếp bằng SDK của VieNeu-TTS.",
+    text="Đây là giọng được nhân bản tức thì.",
     ref_audio="examples/audio_ref/example.wav",
+    denoise=True,          # mặc định; đặt False nếu clip đã sạch
+    style="doc_truyen",
 )
 tts.save(audio, "cloned_voice.wav")
-
-# Hoặc mã hóa sẵn giọng để tái dùng mà không phải đọc lại file:
-my_voice = tts.encode_reference("examples/audio_ref/example.wav")
-audio = tts.infer(text="Nói câu khác bằng cùng một giọng.", ref_codes=my_voice)
-tts.save(audio, "cloned_voice_2.wav")
 ```
+
+#### Lưu & tái dùng giọng đã clone
+Đăng ký clip một lần bằng `add_voice`, sau đó gọi theo tên như giọng dựng sẵn (dùng được cả ở chế độ Hội thoại).
+
+```python
+# Đăng ký giọng (tự denoise + trích hồ sơ giọng một lần)
+tts.add_voice("Giọng của tôi", "my_voice.wav")
+
+audio = tts.infer("Câu này dùng giọng đã lưu.", voice="Giọng của tôi")
+
+# Lưu lại để lần sau vẫn còn
+tts.save_voices()
+# tts.remove_voice("Giọng của tôi")
+
+# Thêm giọng bạn đã tự làm sạch → bỏ qua bước denoise
+tts.add_voice("Giọng sạch", "already_clean.wav", denoise=False)
+```
+
+#### Chỉ khử nhiễu một clip
+Lấy audio đã khử nhiễu mà không tổng hợp gì (để nghe/lưu lại):
+
+```python
+wav, sr = tts.denoise("noisy.wav", out_path="clean.wav")   # 44.1 kHz mono
+```
+
+> **Lưu ý:** `denoise`, `add_voice` và voice cloning hiện cần engine PyTorch (GPU). Giọng dựng sẵn chạy ở mọi nơi.
 
 ---
 

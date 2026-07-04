@@ -147,6 +147,12 @@ class VieNeuV3TurboForTTS(PreTrainedModel):
         self.acoustic_decoder = AcousticDecoder(config)
         self.text_lm_head = nn.Linear(config.hidden_size, config.text_vocab_size, bias=False)
         self.audio_lm_heads = nn.ModuleList([nn.Linear(config.hidden_size, config.audio_vocab_size, bias=False) for _ in range(config.n_vq)])
+        # Optional speaker-embedding projection used by voice cloning: a 192-d
+        # speaker vector is projected to hidden_size and added to every row.
+        if getattr(config, 'use_speaker_embedding', False):
+            self.xvec_proj = nn.Sequential(nn.Linear(config.speaker_embedding_dim, config.hidden_size), nn.LayerNorm(config.hidden_size))
+        else:
+            self.xvec_proj = None
         self.post_init()
 
     @property
@@ -161,7 +167,7 @@ class VieNeuV3TurboForTTS(PreTrainedModel):
         for emb, head in zip(self.audio_embeddings, self.audio_lm_heads):
             head.weight = emb.weight
 
-    def _build_inputs_embeds(self, input_ids: torch.LongTensor) -> torch.Tensor:
+    def _build_inputs_embeds(self, input_ids: torch.LongTensor, speaker_emb: Optional[torch.Tensor]=None) -> torch.Tensor:
         embeds = self.text_embeddings(input_ids[:, :, 0])
         for ch in range(self.config.n_vq):
             channel_ids = input_ids[:, :, ch + 1]
@@ -170,6 +176,9 @@ class VieNeuV3TurboForTTS(PreTrainedModel):
             audio_emb = self.audio_embeddings[ch](safe_ids)
             audio_emb = audio_emb * valid_mask.unsqueeze(-1)
             embeds = embeds + audio_emb
+        # Add the speaker anchor (same vector on every row) when cloning a voice.
+        if self.xvec_proj is not None and speaker_emb is not None:
+            embeds = embeds + self.xvec_proj(speaker_emb.to(embeds.dtype)).unsqueeze(1)
         return embeds
 
     @torch.no_grad()

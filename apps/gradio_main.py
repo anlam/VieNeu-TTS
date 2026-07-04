@@ -796,9 +796,14 @@ def resolve_voice_id(v_id: str) -> str:
 
 # --- 2. DATA & HELPERS ---
 
-def synthesize_speech(text: str, voice_choice: str, custom_audio, custom_text: str, 
+# Reading-style labels (UI) → model style keys (v3 Turbo only).
+STYLE_LABEL_TO_KEY = {"Tự nhiên": "tu_nhien", "Tin tức": "tin_tuc", "Kể chuyện": "doc_truyen"}
+
+
+def synthesize_speech(text: str, voice_choice: str, custom_audio, custom_text: str,
                       mode_tab: str, generation_mode: str, use_batch: bool, max_batch_size_run: int,
-                      temperature: float, max_chars_chunk: int, session_id: str = None):
+                      temperature: float, max_chars_chunk: int,
+                      style_choice: str = "Tự nhiên", denoise_ref: bool = True, session_id: str = None):
     """Synthesis with optimization support and max batch size control"""
     global tts, current_backbone, current_codec, model_loaded, using_lmdeploy
     
@@ -821,12 +826,14 @@ def synthesize_speech(text: str, voice_choice: str, custom_audio, custom_text: s
     # Setup Reference
     yield None, "📄 Đang xử lý Reference..."
     
+    is_v3 = "v3" in (current_backbone or "").lower()
+    style_key = STYLE_LABEL_TO_KEY.get(style_choice, "tu_nhien")
+    v3_speaker_emb = None
     try:
         ref_codes = None
         ref_text_raw = ""
-        # v3 Turbo only: speaker reserved token for built-in default voices. Stays
-        # None for voice cloning, so the engine uses the emotion-tag clone path.
         v3_voice_token_id = None
+        v_id = None
 
         if mode_tab == "preset_mode":
             if not voice_choice:
@@ -837,14 +844,19 @@ def synthesize_speech(text: str, voice_choice: str, custom_audio, custom_text: s
             # Use SDK method - handles caching and JSON internally
             v_id = resolve_voice_id(voice_choice)
             voice_data = tts.get_preset_voice(v_id)
-            ref_codes = voice_data['codes']
-            ref_text_raw = voice_data['text']
-            v3_voice_token_id = voice_data.get('reserved_id')
+            if is_v3:
+                # v3 presets carry a speaker embedding + reference codes.
+                v3_speaker_emb = voice_data['speaker_emb']
+                ref_codes = voice_data.get('codes')
+            else:
+                ref_codes = voice_data['codes']
+                ref_text_raw = voice_data.get('text', '')
+                v3_voice_token_id = voice_data.get('reserved_id')
 
         elif mode_tab == "custom_mode":
             if custom_audio is None:
                 raise ValueError("Vui lòng upload file Audio mẫu (Reference Audio)!")
-            
+
             cb_lower = (current_backbone or "").lower()
             # Turbo v2 and v3 clone purely from audio → no reference transcript needed.
             needs_ref_text = "v2-turbo" not in cb_lower and "v3" not in cb_lower
@@ -852,7 +864,11 @@ def synthesize_speech(text: str, voice_choice: str, custom_audio, custom_text: s
                 raise ValueError("Vui lòng nhập nội dung văn bản của Audio mẫu (Reference Text)!")
 
             ref_text_raw = custom_text.strip() if custom_text else ""
-            ref_codes = tts.encode_reference(custom_audio)
+            if is_v3:
+                # Enroll once: (optionally) denoise + trim ≤8s → speaker embedding + ref codes.
+                v3_speaker_emb, ref_codes = tts.encode_reference(custom_audio, denoise=denoise_ref)
+            else:
+                ref_codes = tts.encode_reference(custom_audio)
 
         # Ensure numpy for inference
         if 'torch' in sys.modules:
@@ -900,8 +916,8 @@ def synthesize_speech(text: str, voice_choice: str, custom_audio, custom_text: s
                         group = v3_chunks[i:i + v3_bs]
                         yield None, f"⚡ v3 Turbo: lô {i // v3_bs + 1} ({len(group)} đoạn, batch size {v3_bs})..."
                         # group là các TEXT chunk -> phonemize từng cái (giữ inline cues).
-                        reqs = [{"phonemes": phonemize_text_with_emotions(c), "ref_codes": ref_codes,
-                                 "voice_token_id": v3_voice_token_id} for c in group]
+                        reqs = [{"phonemes": phonemize_text_with_emotions(c), "speaker_emb": v3_speaker_emb,
+                                 "ref_codes": ref_codes, "style": style_key, "use_ref_codes": True} for c in group]
                         v3_wavs.extend(tts._v3_batch_engine.generate_batch(
                             reqs, temperature=temperature, max_new_frames=300))
                     wav = join_audio_chunks(v3_wavs, sr=sr_v3, silence_p=0.15)
@@ -912,16 +928,16 @@ def synthesize_speech(text: str, voice_choice: str, custom_audio, custom_text: s
                     # đoạn thứ mấy + ước tính thời gian còn lại — quan trọng trên CPU
                     # vì mỗi đoạn có thể mất nhiều giây.
                     total_v3 = len(v3_chunks)
-                    # preset_mode → emotion path qua tên voice (reserved token + fixed
-                    # codes); voice cloning → emotion-tag path với ref codes đã clone.
+                    # preset_mode → preset voice by name; voice cloning → clone from the
+                    # uploaded audio (denoised once inside infer_stream).
                     stream_kwargs = ({"voice": v_id} if mode_tab == "preset_mode"
-                                     else {"ref_codes": ref_codes})
+                                     else {"ref_audio": custom_audio, "denoise": denoise_ref})
                     v3_wavs = []
                     chunk_durations = []
                     last_t = time.time()
                     yield None, f"⏳ v3 Turbo: Đang xử lý đoạn 1/{total_v3}..."
                     for i, chunk_wav in enumerate(tts.infer_stream(
-                            raw_text, temperature=temperature,
+                            raw_text, style=style_key, temperature=temperature,
                             max_chars=max_chars_chunk, **stream_kwargs)):
                         if _STOP_EVENT.is_set():
                             yield None, "⏹️ Đã dừng tạo giọng nói."
@@ -1315,7 +1331,7 @@ def _synthesize_conversation_v3(lines, mapping, temperature, max_chars_chunk, si
     sr = getattr(tts, "sample_rate", 48000)
     t0 = time.time()
 
-    # Resolve each speaker → (ref_codes np, reserved token id), cached per speaker.
+    # Resolve each speaker → (speaker_emb, ref_codes), cached per speaker.
     def _voice_for(spk_name):
         cfg = mapping.get(spk_name.lower())
         v_id = (cfg or {}).get('voice') or tts._default_voice
@@ -1323,12 +1339,14 @@ def _synthesize_conversation_v3(lines, mapping, temperature, max_chars_chunk, si
             vd = tts.get_preset_voice(v_id)
         except Exception:
             vd = tts.get_preset_voice(tts._default_voice)
-        rc = vd['codes']
+        emb = vd.get('speaker_emb')
+        rc = vd.get('codes')
         if 'torch' in sys.modules:
             import torch
             if isinstance(rc, torch.Tensor):
                 rc = rc.cpu().numpy()
-        return np.asarray(rc), vd.get('reserved_id')
+        return (np.asarray(emb, dtype=np.float32) if emb is not None else None,
+                np.asarray(rc) if rc is not None else None)
 
     # CPU (ONNX) has no batched engine → run sequentially, one turn at a time.
     dev = getattr(getattr(tts, "engine", None), "device", None)
@@ -1343,8 +1361,8 @@ def _synthesize_conversation_v3(lines, mapping, temperature, max_chars_chunk, si
             v_id = (cfg or {}).get('voice') or tts._default_voice
             yield None, f"⏳ [{li+1}/{len(lines)}] {line['speaker']}: {line['text'][:30]}..."
             try:
-                wav = tts.infer(line['text'], voice=v_id, temperature=temperature,
-                                max_chars=max_chars_chunk)
+                wav = tts.infer(line['text'], voice=v_id, style="tu_nhien",
+                                temperature=temperature, max_chars=max_chars_chunk)
             except Exception as e:
                 print(f"❌ Lỗi câu {li+1}: {e}")
                 continue
@@ -1369,12 +1387,13 @@ def _synthesize_conversation_v3(lines, mapping, temperature, max_chars_chunk, si
         key = line['speaker'].lower()
         if key not in voice_cache:
             voice_cache[key] = _voice_for(line['speaker'])
-        ref_codes, vtok = voice_cache[key]
+        spk_emb, ref_codes = voice_cache[key]
         # Chia chunk theo TEXT đã normalize (giống v2-gpu), giữ inline cues, rồi
-        # phonemize từng chunk.
+        # phonemize từng chunk. Hội thoại luôn dùng phong cách Tự nhiên.
         for chunk in normalize_to_chunks_v3(line['text'], max_chars=max_chars_chunk):
             reqs.append({"phonemes": phonemize_text_with_emotions(chunk),
-                         "ref_codes": ref_codes, "voice_token_id": vtok})
+                         "speaker_emb": spk_emb, "ref_codes": ref_codes,
+                         "style": "tu_nhien", "use_ref_codes": True})
             req_line.append(li)
 
     if not reqs:
@@ -1870,6 +1889,10 @@ with gr.Blocks(theme=theme, css=css, title="VieNeu-TTS", head=head_html) as demo
                                 with gr.Group(visible=True) as cloning_elements_group:
                                     custom_audio = gr.Audio(label="Audio giọng mẫu (3-5 giây) (.wav)", type="filepath")
                                     cloning_warning_msg = gr.Markdown(visible=False, elem_id="cloning-warning")
+                                    denoise_checkbox = gr.Checkbox(
+                                        value=True, label="🔇 Denoise audio mẫu",
+                                        info="Khử nhiễu nền + chuẩn hoá audio mẫu trước khi clone (khuyến nghị). Audio dài hơn 8 giây sẽ được cắt ngắn.",
+                                    )
                                     # v3 clones from audio only — the reference transcript box
                                     # is hidden for v3 (toggled by on_backbone_change).
                                     custom_text = gr.Textbox(label="Nội dung audio mẫu - vui lòng gõ đúng nội dung của audio mẫu - kể cả dấu câu vì model rất nhạy cảm với dấu câu (.,?!)", visible=_default_is_v2_gpu)
@@ -1889,6 +1912,13 @@ with gr.Blocks(theme=theme, css=css, title="VieNeu-TTS", head=head_html) as demo
                                     Hướng dẫn chi tiết có tại file: `finetune/README.md` hoặc xem trên [GitHub](https://github.com/pnnbao97/VieNeu-TTS/tree/main/finetune).
                                     """)
                         
+                        style_dropdown = gr.Dropdown(
+                            ["Tự nhiên", "Tin tức", "Kể chuyện"],
+                            value="Tự nhiên",
+                            label="🎭 Phong cách đọc",
+                            info="Phong cách giọng đọc (áp dụng cho VieNeu-TTS v3).",
+                        )
+
                         generation_mode = gr.Radio(
                             ["Standard (Một lần)"],
                             value="Standard (Một lần)",
@@ -2174,9 +2204,10 @@ with gr.Blocks(theme=theme, css=css, title="VieNeu-TTS", head=head_html) as demo
         # --- Standard Generation Handlers ---
         gen_event = btn_generate.click(
             fn=synthesize_speech_with_estimate,
-            inputs=[text_input, voice_select, custom_audio, custom_text, current_mode_state, 
+            inputs=[text_input, voice_select, custom_audio, custom_text, current_mode_state,
                     generation_mode, use_batch, max_batch_size_run,
-                    temperature_slider, max_chars_chunk_slider, session_id_state],
+                    temperature_slider, max_chars_chunk_slider,
+                    style_dropdown, denoise_checkbox, session_id_state],
             outputs=[audio_output, status_output, estimate_output]
         )
         btn_generate.click(lambda: gr.update(interactive=True), outputs=btn_stop)

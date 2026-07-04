@@ -3,12 +3,13 @@ VieNeu-TTS v3 Turbo backend (PyTorch).
 ======================================
     from vieneu import Vieneu
     tts = Vieneu(mode="v3turbo")
-    wav = tts.infer("Xin chào", ref_audio="ref.wav")
+    wav = tts.infer("Xin chào", ref_audio="ref.wav")   # clone a voice
+    wav = tts.infer("Xin chào", voice="Xuân Vĩnh", style="doc_truyen")  # preset voice
     tts.save(wav, "out.wav")
 """
 import logging
 from pathlib import Path
-from typing import Any, Generator, List, Optional, Union
+from typing import Any, Generator, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -20,27 +21,25 @@ logger = logging.getLogger("Vieneu.V3Turbo")
 
 
 class V3TurboVieNeuTTS(BaseVieneuTTS):
-    """VieNeu-TTS v3 Turbo (PyTorch)"""
+    """VieNeu-TTS v3 Turbo (PyTorch)."""
 
     def __init__(
         self,
         backbone_repo: str = "pnnbao-ump/VieNeu-TTS-v3-Turbo",
+        model_subfolder: str = "update",
         moss_tokenizer: str = "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano",
         device: str = "auto",
         dtype: str = "auto",
         backend: str = "auto",   # "auto" → ONNX on CPU, PyTorch on GPU; "onnx"|"pytorch" to force
-        onnx_repo: Optional[str] = None,  # HF repo holding onnx/ (default = backbone_repo)
-        onnx_dir: Optional[str] = None,   # local dir with the 4 onnx files (skips HF download)
+        onnx_repo: Optional[str] = None,
+        onnx_dir: Optional[str] = None,
+        onnx_subfolder: str = "onnx_update",
         hf_token: Optional[str] = None,
         **kwargs: Any,
     ):
-        # KHÔNG truyền codec_repo → bỏ qua NeuCodec của base; v3 có codec MOSS riêng.
         super().__init__()
-        self.sample_rate = 48_000  # v3 = 48 kHz (ghi đè 24 kHz của base)
+        self.sample_rate = 48_000
 
-        # Pick engine by device: CPU → torch-free ONNX engine (fast + light), GPU →
-        # PyTorch. Device is resolved WITHOUT hard-requiring torch, so a torch-free
-        # CPU install (onnxruntime only) still works.
         if device in (None, "auto"):
             try:
                 import torch
@@ -52,20 +51,24 @@ class V3TurboVieNeuTTS(BaseVieneuTTS):
         use_onnx = backend == "onnx" or (backend == "auto" and dev_type == "cpu")
 
         if use_onnx:
+            # Torch-free CPU engine. Reads its ONNX graphs from `onnx_subfolder` in the
+            # model repo (uploaded separately).
             from ._v3_turbo_engine.onnx_runtime_lite import OnnxV3LiteEngine
-            logger.info(f"⏳ Loading VieNeu-TTS v3 Turbo (ONNX/CPU, torch-free) from: {backbone_repo} ...")
+            logger.info(f"⏳ Loading VieNeu-TTS v3 Turbo (ONNX/CPU) from: {backbone_repo}/{onnx_subfolder} ...")
             self.engine = OnnxV3LiteEngine(
                 checkpoint_path=backbone_repo,
                 onnx_repo=onnx_repo,
                 onnx_dir=onnx_dir,
+                onnx_subfolder=onnx_subfolder,
                 hf_token=hf_token,
             )
             self.backend = "onnx"
         else:
             from ._v3_turbo_engine import VieNeuTTSv3Turbo
-            logger.info(f"⏳ Loading VieNeu-TTS v3 Turbo (PyTorch) from: {backbone_repo} ...")
+            logger.info(f"⏳ Loading VieNeu-TTS v3 Turbo (PyTorch) from: {backbone_repo}/{model_subfolder} ...")
             self.engine = VieNeuTTSv3Turbo(
                 checkpoint_path=backbone_repo,
+                model_subfolder=model_subfolder,
                 moss_tokenizer_path=moss_tokenizer,
                 device=device,
                 dtype=dtype,
@@ -74,20 +77,16 @@ class V3TurboVieNeuTTS(BaseVieneuTTS):
             self.backend = "pytorch"
         logger.info(f"✅ VieNeu-TTS v3 Turbo ready (backend={self.backend})")
 
-        # Built-in default voices. The emotion checkpoint identifies each default
-        # speaker by a reserved token (``reserved_id``, ids 13..42) plus that
-        # speaker's fixed MOSS ref codes — this is the "emotion" path. Users may
-        # instead clone any voice by passing `ref_audio` (or `ref_codes`), which
-        # falls back to the original emotion-tag path (no reserved token).
-        self._preset_voices = {}
-        self._default_voice = None
+        self.default_style = "tu_nhien"
+        self._preset_voices: dict = {}
+        self._default_voice: Optional[str] = None
         self._load_v3_voices()
 
+    # ── Preset voices (speaker embedding + reference codes) ─────────────────────
     def _load_v3_voices(self) -> None:
-        """Load the built-in default voices from assets/voices_v3_turbo.json.
+        """Load the built-in voices from assets/voices_v3_turbo.json.
 
-        Each preset carries a ``reserved_id`` (the speaker token) and pre-encoded
-        ``codes`` (the speaker's fixed reference frames).
+        Each preset carries a 192-d ``speaker_emb`` and pre-encoded ``codes``.
         """
         import json
         path = Path(__file__).parent / "assets" / "voices_v3_turbo.json"
@@ -95,84 +94,141 @@ class V3TurboVieNeuTTS(BaseVieneuTTS):
             return
         data = json.loads(path.read_text(encoding="utf-8"))
         for name, v in data.get("presets", {}).items():
+            emb = v.get("speaker_emb")
+            codes = v.get("codes")
             self._preset_voices[name] = {
                 "description": v.get("description", ""),
-                "reserved_id": int(v["reserved_id"]) if v.get("reserved_id") is not None else None,
-                "codes": np.asarray(v["codes"], dtype=np.int64),  # (T, n_vq)
+                "gender": v.get("gender", ""),
+                "style": v.get("style", self.default_style),
+                "speaker_emb": np.asarray(emb, dtype=np.float32) if emb is not None else None,
+                "codes": np.asarray(codes, dtype=np.int64) if codes is not None else None,
             }
         self._default_voice = data.get("default_voice")
-        logger.info(f"📢 Loaded {len(self._preset_voices)} preset voices "
-                    f"(default: {self._default_voice})")
+        logger.info(f"📢 Loaded {len(self._preset_voices)} preset voices (default: {self._default_voice})")
 
     def list_preset_voices(self) -> List[tuple]:
-        """Return ``[(label, voice_id), ...]`` for the built-in default voices.
-
-        Format matches the base API: label = description (falls back to the name),
-        value = the voice name used by :meth:`get_preset_voice`.
-        """
+        """Return ``[(label, voice_id), ...]`` for the built-in voices."""
         return [(f"{n} — {v['description']}" if v["description"] else n, n)
                 for n, v in self._preset_voices.items()]
 
     def get_preset_voice(self, voice_name: Optional[str] = None) -> dict:
-        """Return ``{"codes", "reserved_id", "text"}`` for a built-in default voice.
-
-        ``reserved_id`` is the speaker token used by the emotion path; ``codes`` are
-        that speaker's fixed reference frames. ``text`` is always empty (v3 does not
-        use a reference transcript).
-        """
         name = voice_name or self._default_voice
         if name not in self._preset_voices:
             raise ValueError(f"Voice '{name}' not found. Available: {list(self._preset_voices)}")
-        v = self._preset_voices[name]
-        return {"codes": v["codes"], "reserved_id": v.get("reserved_id"), "text": ""}
+        return self._preset_voices[name]
 
-    # ── Reference voice (clone from ref audio / codes, or a preset by name) ──
-    def encode_reference(self, ref_audio: Union[str, Path]) -> np.ndarray:
-        """Encode a reference wav into MOSS ref codes ``(T, n_vq)``."""
-        return self.engine._encode_ref(str(ref_audio))
+    def encode_reference(self, ref_audio: Union[str, Path], denoise: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+        """Enroll a voice from a wav → ``(speaker_emb, ref_codes)``."""
+        return self.engine.prepare_reference(str(ref_audio), denoise=denoise, use_ref_codes=True)
 
-    def _preset_codes(self, name: str) -> np.ndarray:
-        if name not in self._preset_voices:
-            raise ValueError(f"Voice '{name}' not found. Available: {list(self._preset_voices)}")
-        return self._preset_voices[name]["codes"]
+    def denoise(self, ref_audio: Union[str, Path], out_path: Optional[Union[str, Path]] = None,
+                max_seconds: Optional[float] = None) -> Tuple[np.ndarray, int]:
+        """Clean up a reference clip and return ``(wav, sample_rate)`` at 44.1 kHz.
 
-    def _resolve_v3_ref(self, voice, ref_audio, ref_codes):
-        """Resolve the voice to ``(ref_codes, voice_token_id)``.
-
-        ``voice_token_id`` is the speaker reserved token for a built-in default
-        voice (the "emotion" path); it is ``None`` when cloning, so the engine
-        falls back to the emotion-tag path with free reference frames.
-
-        Precedence: explicit ``ref_codes`` -> cloned ``ref_audio`` (both = clone,
-        token None) -> preset ``voice`` (name string or dict, token = reserved_id)
-        -> default preset.
+        Pass ``out_path`` to also save the cleaned wav. ``max_seconds`` optionally
+        trims the clip first. Use the result as a nicer reference for cloning.
         """
-        if ref_codes is not None:
-            return np.asarray(ref_codes), None
+        import soundfile as sf
+        den = getattr(self.engine, "denoiser", None)
+        if den is None:
+            raise RuntimeError("Denoiser không khả dụng trên backend này.")
+        wav, sr = sf.read(str(ref_audio))
+        if getattr(wav, "ndim", 1) > 1:
+            wav = wav.mean(axis=1)
+        wav = np.asarray(wav, dtype=np.float32)
+        if max_seconds and len(wav) > int(max_seconds * sr):
+            wav = wav[: int(max_seconds * sr)]
+        clean = den.denoise(wav, sr)          # -> float32 mono @ 44100
+        if out_path is not None:
+            sf.write(str(out_path), clean, 44100)
+        return clean, 44100
+
+    def add_voice(self, name: str, ref_audio: Union[str, Path], *, denoise: bool = True,
+                  use_ref_codes: bool = True, description: str = "", gender: str = "",
+                  style: str = "tu_nhien", save: bool = False) -> str:
+        """Register a custom voice under ``name`` for use as ``infer(..., voice=name)``.
+
+        ``ref_audio`` is enrolled once (denoised + trimmed, then speaker embedding +
+        reference codes are extracted). Pass ``denoise=False`` if the clip is already
+        clean. Set ``save=True`` to persist it to the voices file for later sessions.
+        """
+        if not name or not str(name).strip():
+            raise ValueError("Tên giọng không được để trống.")
+        speaker_emb, ref_codes = self.engine.prepare_reference(
+            str(ref_audio), denoise=denoise, use_ref_codes=use_ref_codes)
+        self._preset_voices[name] = {
+            "description": description,
+            "gender": gender,
+            "style": style,
+            "speaker_emb": np.asarray(speaker_emb, dtype=np.float32),
+            "codes": None if ref_codes is None else np.asarray(ref_codes, dtype=np.int64),
+        }
+        if not self._default_voice:
+            self._default_voice = name
+        if save:
+            self.save_voices()
+        logger.info(f"➕ Added voice '{name}'.")
+        return name
+
+    def remove_voice(self, name: str, save: bool = False) -> None:
+        """Remove a registered voice by name."""
+        self._preset_voices.pop(name, None)
+        if self._default_voice == name:
+            self._default_voice = next(iter(self._preset_voices), None)
+        if save:
+            self.save_voices()
+
+    def save_voices(self, path: Optional[Union[str, Path]] = None) -> str:
+        """Persist the current voices (speaker embedding + codes) to a JSON file."""
+        import json
+        path = Path(path) if path else (Path(__file__).parent / "assets" / "voices_v3_turbo.json")
+        presets = {}
+        for n, v in self._preset_voices.items():
+            emb = v.get("speaker_emb")
+            codes = v.get("codes")
+            presets[n] = {
+                "description": v.get("description", ""),
+                "gender": v.get("gender", ""),
+                "style": v.get("style", self.default_style),
+                "speaker_emb": [round(float(x), 6) for x in np.asarray(emb).reshape(-1)] if emb is not None else None,
+                "codes": np.asarray(codes, dtype=int).tolist() if codes is not None else None,
+            }
+        data = {"meta": {"note": "v3 turbo voices: speaker embedding + reference codes"},
+                "default_voice": self._default_voice, "presets": presets}
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        logger.info(f"💾 Saved {len(presets)} voices → {path}")
+        return str(path)
+
+    def _resolve_ref(self, voice, ref_audio, denoise, use_ref_codes) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+        """Resolve the requested voice to ``(speaker_emb, ref_codes)``.
+
+        Precedence: cloned ``ref_audio`` → preset ``voice`` (name or dict) → default preset.
+        """
         if ref_audio is not None:
-            return self.encode_reference(ref_audio), None
+            return self.engine.prepare_reference(str(ref_audio), denoise=denoise, use_ref_codes=use_ref_codes)
+        preset = None
         if isinstance(voice, str):
-            v = self._preset_voices.get(voice)
-            if v is None:
+            preset = self._preset_voices.get(voice)
+            if preset is None:
                 raise ValueError(f"Voice '{voice}' not found. Available: {list(self._preset_voices)}")
-            return v["codes"], v.get("reserved_id")
-        if isinstance(voice, dict) and voice.get("codes") is not None:
-            tok = voice.get("reserved_id")
-            return np.asarray(voice["codes"]), (int(tok) if tok is not None else None)
-        if self._default_voice:
-            v = self._preset_voices[self._default_voice]
-            return v["codes"], v.get("reserved_id")
-        raise ValueError("Provide a preset `voice` name, `ref_audio`, or `ref_codes`.")
+        elif isinstance(voice, dict):
+            preset = voice
+        elif self._default_voice:
+            preset = self._preset_voices[self._default_voice]
+        if preset is None:
+            raise ValueError("Provide a preset `voice` name or a `ref_audio` to clone.")
+        codes = preset.get("codes") if use_ref_codes else None
+        return preset["speaker_emb"], codes
 
     # ── Public API ───────────────────────────────────────────────────────────
     def infer(
         self,
         text: str,
         ref_audio: Optional[Union[str, Path]] = None,
-        ref_codes: Optional[np.ndarray] = None,
-        ref_text: Optional[str] = None,  # noqa: ARG002 (v3 không dùng ref transcript)
         voice: Optional[Union[str, dict]] = None,
-        emotion: str = "natural",
+        style: str = "tu_nhien",
+        denoise: bool = True,
+        use_ref_codes: bool = True,
         temperature: float = 0.8,
         top_k: int = 25,
         top_p: float = 0.95,
@@ -184,10 +240,8 @@ class V3TurboVieNeuTTS(BaseVieneuTTS):
         apply_watermark: bool = True,
         **kwargs: Any,
     ) -> np.ndarray:
-        ref_codes, voice_token_id = self._resolve_v3_ref(voice, ref_audio, ref_codes)
+        speaker_emb, ref_codes = self._resolve_ref(voice, ref_audio, denoise, use_ref_codes)
 
-        # Chia chunk theo TEXT đã normalize (giống v2-gpu, không vụn như cắt ở
-        # tầng phoneme), giữ inline cues, rồi phonemize TỪNG chunk.
         chunks = normalize_to_chunks_v3(text, max_chars=max_chars)
         if not chunks:
             return np.array([], dtype=np.float32)
@@ -196,8 +250,8 @@ class V3TurboVieNeuTTS(BaseVieneuTTS):
         for chunk in chunks:
             ph = phonemize_text_with_emotions(chunk)
             wav = self.engine.infer(
-                text="", phonemes=ph, ref_codes=ref_codes,
-                emotion=emotion, voice_token_id=voice_token_id,
+                phonemes=ph, speaker_emb=speaker_emb, ref_codes=ref_codes,
+                style=style, use_ref_codes=use_ref_codes,
                 temperature=temperature, top_k=top_k, top_p=top_p,
                 max_new_frames=max_new_frames, repetition_penalty=repetition_penalty,
             )
@@ -210,9 +264,10 @@ class V3TurboVieNeuTTS(BaseVieneuTTS):
         self,
         text: str,
         ref_audio: Optional[Union[str, Path]] = None,
-        ref_codes: Optional[np.ndarray] = None,
         voice: Optional[Union[str, dict]] = None,
-        emotion: str = "natural",
+        style: str = "tu_nhien",
+        denoise: bool = True,
+        use_ref_codes: bool = True,
         temperature: float = 0.8,
         top_k: int = 25,
         top_p: float = 0.95,
@@ -222,25 +277,19 @@ class V3TurboVieNeuTTS(BaseVieneuTTS):
         apply_watermark: bool = True,
         **kwargs: Any,
     ) -> Generator[np.ndarray, None, None]:
-        ref_codes, voice_token_id = self._resolve_v3_ref(voice, ref_audio, ref_codes)
-        # Chia chunk theo TEXT đã normalize (giống v2-gpu), giữ inline cues.
+        speaker_emb, ref_codes = self._resolve_ref(voice, ref_audio, denoise, use_ref_codes)
         chunks = normalize_to_chunks_v3(text, max_chars=max_chars)
         for chunk in chunks:
             ph = phonemize_text_with_emotions(chunk)
             wav = self.engine.infer(
-                text="", phonemes=ph, ref_codes=ref_codes,
-                emotion=emotion, voice_token_id=voice_token_id,
+                phonemes=ph, speaker_emb=speaker_emb, ref_codes=ref_codes,
+                style=style, use_ref_codes=use_ref_codes,
                 temperature=temperature, top_k=top_k, top_p=top_p,
                 max_new_frames=max_new_frames, repetition_penalty=repetition_penalty,
             )
             yield self._apply_watermark(wav) if apply_watermark else wav
 
-    def infer_batch(
-        self,
-        texts: List[str],
-        apply_watermark: bool = True,
-        **kwargs: Any,
-    ) -> List[np.ndarray]:
+    def infer_batch(self, texts: List[str], apply_watermark: bool = True, **kwargs: Any) -> List[np.ndarray]:
         return [self.infer(t, apply_watermark=apply_watermark, **kwargs) for t in texts]
 
     def close(self) -> None:

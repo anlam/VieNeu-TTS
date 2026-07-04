@@ -32,32 +32,44 @@ pip install "vieneu[gpu]"
 ```python
 from vieneu import Vieneu
 
-# Default = v3 Turbo. CPU → ONNX (torch-free); GPU → PyTorch (auto-detected).
+# Default = v3 Turbo (48 kHz). GPU → PyTorch (auto-detected).
 tts = Vieneu()
 
-# 1. Default voice (Ngọc Lan) — 48 kHz, no reference needed
-audio = tts.infer("Xin chào, đây là VieNeu-TTS phiên bản ba Turbo.")
+# 1. Built-in voice by name — no reference needed
+audio = tts.infer("Xin chào, đây là VieNeu-TTS.", voice="Trúc Ly")
 tts.save(audio, "output.wav")
 
-# 2. Built-in voices by name
 for label, voice_id in tts.list_preset_voices():
     print(label, voice_id)
-audio = tts.infer("Mình là Xuân Vĩnh nè!", voice="Xuân Vĩnh")
+
+# 2. Reading style: "tu_nhien" (natural) | "tin_tuc" (news) | "doc_truyen" (storytelling)
+audio = tts.infer("Bản tin sáng nay.", voice="Quang Sơn", style="tin_tuc")
 
 # 3. Emotion / non-verbal cues — EXPERIMENTAL: [cười] [thở dài] [hắng giọng]
-audio = tts.infer("Nghe hay quá đi [cười]. Để mình nói tiếp [hắng giọng].", voice="Ngọc Linh")
+audio = tts.infer("Nghe hay quá đi [cười].", voice="Trúc Ly")
 ```
 
 ### 🦜 Zero-shot Voice Cloning
+
+Clone from a short clip; the reference is auto-denoised and trimmed to ≤ 8s.
 
 ```python
 from vieneu import Vieneu
 tts = Vieneu()
 
-# Clone straight from a 3–5s clip — no reference transcript needed.
-audio = tts.infer(text="Chào bạn, đây là giọng của tôi.", ref_audio="path/to/voice.wav")
+# Clone straight from a 3–8s clip
+audio = tts.infer("Chào bạn, đây là giọng của tôi.", ref_audio="path/to/voice.wav", denoise=True)
 tts.save(audio, "cloned.wav")
+
+# Save a cloned voice and reuse it by name
+tts.add_voice("Giọng của tôi", "path/to/voice.wav")
+audio = tts.infer("Câu này dùng giọng đã lưu.", voice="Giọng của tôi")
+
+# Just clean up a clip (no synthesis)
+wav, sr = tts.denoise("noisy.wav", out_path="clean.wav")
 ```
+
+> `denoise`, `add_voice`, and cloning require the PyTorch (GPU) engine; built-in voices work everywhere.
 
 ### Older models (v1 / v2 — requires `pip install "vieneu[gpu]"`)
 ```python

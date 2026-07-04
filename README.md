@@ -16,10 +16,11 @@
 > **🆕 VieNeu-TTS v3 Turbo (early access) is out for preview!**
 > A brand-new architecture **designed and trained from scratch by Phạm Nguyễn Ngọc Bảo** (codec: [MOSS-Audio-Tokenizer-Nano](https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano); phonemizer: [sea-g2p](https://github.com/pnnbao97/sea-g2p)):
 > - **48 kHz** high-fidelity audio (up from 24 kHz).
-> - **Built-in default voices** via dedicated speaker tokens — stable, consistent, no reference clip needed.
+> - **Built-in default voices** — stable and consistent, no reference clip needed.
+> - **Reading styles**: natural, news, and storytelling.
 > - **Emotion / non-verbal cues** *(experimental)*: drop `[cười]`, `[thở dài]`, `[hắng giọng]` straight into the text.
 > - **Batched generation** (batch size up to 32), including a multi-speaker **Conversation** mode that batches the whole script regardless of speaker.
-> - **Instant voice cloning** from 3–5s of audio.
+> - **Instant voice cloning** from a 3–8s clip, with automatic reference denoising.
 >
 > Try it in the Web UI (backbone **"VieNeu-TTS-v3-Turbo (Thử nghiệm)"**) or the SDK (`Vieneu(mode="v3turbo")`). The **full v3** release is coming in the next few weeks.
 
@@ -101,42 +102,91 @@ The `vieneu` SDK **defaults to VieNeu-TTS v3 Turbo (48 kHz)**. The minimal insta
 
 ### Quick Start
 ```bash
-# Minimal, TORCH-FREE install — runs v3 Turbo on CPU via ONNX Runtime
 pip install vieneu
-
 ```
 
 ```python
 from vieneu import Vieneu
-from time import time
 
-# Default = v3 Turbo. CPU → ONNX (torch-free); GPU → PyTorch (auto-detected).
+# Default = v3 Turbo (48 kHz). GPU → PyTorch (auto-detected).
 tts = Vieneu()
 
-text = f"""[cười] Trời ơi, cái giọng nó tự nhiên mà nó mượt mà dã man, nghe không khác gì người thật luôn. Giờ thì tha hồ mà quẩy content với cả kho giọng nói đa dạng, đủ mọi sắc thái biểu cảm. Mọi người bật loa lên rồi cùng trải nghiệm thử với mình nhé!"""
-
-start_time = time()
-# 1. Default voice (Bình An) — 48 kHz, no reference needed
-print("Bắt đầu sinh audio với giọng mặc định Bình An...")
-audio = tts.infer(text)
+# 1. Built-in voice by name — no reference clip needed
+audio = tts.infer("Xin chào, đây là VieNeu-TTS.", voice="Trúc Ly")
 tts.save(audio, "output.wav")
-end_time = time()
-print("Audio đã được sinh ra và được lưu vào file output.wav")
-print(f"Thời gian sinh audio: {end_time - start_time:.2f} giây")
-# 2. Built-in voices by name
-print("Danh sách giọng nói có sẵn:")
+
+# List the built-in voices
 for label, voice_id in tts.list_preset_voices():
     print(f"- {label} ({voice_id})")
-print("Bắt đầu sinh audio với giọng Xuân Vĩnh...")
-audio = tts.infer("Mình là Xuân Vĩnh nè!", voice="Xuân Vĩnh")
-tts.save(audio, "output_Xuân Vĩnh.wav")
-print("Audio đã được sinh ra và được lưu vào file output_Xuân Vĩnh.wav")
-# # 3. Emotion / non-verbal cues — EXPERIMENTAL: [cười] [thở dài] [hắng giọng]
-# audio = tts.infer("Nghe hay quá đi [cười]. Để mình nói tiếp [hắng giọng].", voice="Ngọc Linh")
-
-# # 4. Instant voice cloning from a 3–5s reference clip
-# audio = tts.infer("Đây là giọng được nhân bản tức thì.", ref_audio="my_voice.wav")
 ```
+
+### Reading style
+
+Pick how the text is read with `style` (default `"tu_nhien"`):
+
+| `style`        | Meaning       |
+| -------------- | ------------- |
+| `"tu_nhien"`   | Natural / conversational |
+| `"tin_tuc"`    | News          |
+| `"doc_truyen"` | Storytelling  |
+
+```python
+audio = tts.infer("Bản tin sáng nay.", voice="Quang Sơn", style="tin_tuc")
+```
+
+### Emotion cues (experimental)
+
+Inline tags are supported anywhere in the text: `[cười]` (chuckle), `[thở dài]` (sigh), `[hắng giọng]` (clear throat).
+
+```python
+audio = tts.infer("Nghe hay quá đi [cười]. Để mình nói tiếp [hắng giọng].", voice="Trúc Ly")
+```
+
+### Voice cloning
+
+Clone any voice from a short reference clip. The clip is cleaned up automatically
+(background noise removed, and trimmed to ≤ 8 seconds) before cloning — keep
+`denoise=True` unless your clip is already clean.
+
+```python
+audio = tts.infer(
+    "Đây là giọng được nhân bản tức thì.",
+    ref_audio="my_voice.wav",   # a 3–8s reference clip
+    denoise=True,               # default; set False if the clip is already clean
+    style="doc_truyen",
+)
+tts.save(audio, "cloned.wav")
+```
+
+### Save & reuse a cloned voice
+
+Register a reference once with `add_voice`, then use it by name like a built-in voice.
+
+```python
+# Enroll a voice (denoises + extracts the speaker profile once)
+tts.add_voice("Giọng của tôi", "my_voice.wav")
+
+# Now reuse it anywhere, including the conversation mode
+audio = tts.infer("Câu này dùng giọng đã lưu.", voice="Giọng của tôi")
+
+# Persist your voices so they load next session
+tts.save_voices()                 # writes to the default voices file
+# tts.remove_voice("Giọng của tôi")
+
+# Add a voice you already cleaned yourself → skip denoising
+tts.add_voice("Giọng sạch", "already_clean.wav", denoise=False)
+```
+
+### Clean up a clip on its own
+
+Get the denoised audio without synthesizing anything (e.g. to inspect or store it):
+
+```python
+wav, sr = tts.denoise("noisy.wav", out_path="clean.wav")   # 44.1 kHz mono
+```
+
+> **Note:** `denoise`, `add_voice`, and voice cloning currently require the PyTorch
+> (GPU) engine. Built-in voices work everywhere.
 
 ---
 
