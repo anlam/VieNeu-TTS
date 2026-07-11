@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import threading
 import time
 from pathlib import Path
@@ -140,20 +141,13 @@ class OnnxV3LiteEngine:
 
         # ── ONNX sessions ──────────────────────────────────────────────────────
         so = ort.SessionOptions()
-        # Threading. Model này mỗi op cực nhỏ (1 token / 1-layer acoustic) và mỗi frame
-        # bắn ~17 ORT-call liên tiếp. Hai bẫy trên CPU:
-        #   1) intra-op thread SPIN (busy-wait giữa op để giảm latency) → trên chuỗi call
-        #      tí hon nó cháy CPU vô ích và THRASH khi nhiều thread → hiệu năng dao động
-        #      mạnh theo tải máy, và sụp 2–4× khi thread > nhân. Tắt spinning ⇒ thread ngủ
-        #      giữa call ⇒ đường cong PHẲNG & ỔN ĐỊNH bất kể số nhân. Đây là fix chính.
-        #   2) số thread. Đã benchmark vòng per-frame đầy đủ (spinning off): intra 1≈2≈4
-        #      (~37ms), 8 chỉ nhanh hơn ~6% nhưng ngốn 8 nhân. Nên mặc định 1 thread:
-        #      latency gần tối ưu, an toàn, và throughput TỐT NHẤT khi serve song song
-        #      (1 nhân/request × N request). Latency-critical single-stream: set threads=4–6.
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         so.inter_op_num_threads = 1
         so.add_session_config_entry("session.intra_op.allow_spinning", "0")
-        intra = int(threads) if (threads and threads > 0) else 1
+        if threads and threads > 0:
+            intra = int(threads)
+        else:
+            intra = min(max((os.cpu_count() or 8) // 2, 1), 8)
         so.intra_op_num_threads = intra
         self.ort_intra_op_threads = intra
         prov = ["CPUExecutionProvider"]

@@ -38,6 +38,7 @@ class V3TurboVieNeuTTS(BaseVieneuTTS):
         onnx_repo: Optional[str] = None,
         onnx_dir: Optional[str] = None,
         onnx_subfolder: str = "onnx_update",
+        threads: int = 0,   # ONNX/CPU intra-op threads; 0 = mặc định engine (~nhân vật lý, cap 8). Đặt số cụ thể để tinh chỉnh.
         **kwargs: Any,
     ):
         super().__init__()
@@ -63,6 +64,7 @@ class V3TurboVieNeuTTS(BaseVieneuTTS):
                 onnx_repo=onnx_repo,
                 onnx_dir=onnx_dir,
                 onnx_subfolder=onnx_subfolder,
+                threads=threads,
             )
             self.backend = "onnx"
         else:
