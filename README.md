@@ -106,6 +106,7 @@ pip install vieneu
 ```
 
 ```python
+import time
 from vieneu import Vieneu
 
 # Default = v3 Turbo (48 kHz). GPU → PyTorch (auto-detected).
@@ -113,9 +114,22 @@ tts = Vieneu()
 
 # 1. Built-in voice by name — no reference clip needed
 print("🔊 Generating speech...")
+
+start_time = time.time()
 audio = tts.infer("[cười] Trời ơi, cái giọng nó tự nhiên mà nó mượt mà dã man, nghe không khác gì người thật luôn. Giờ thì tha hồ mà quẩy content với cả kho giọng nói đa dạng, đủ mọi sắc thái biểu cảm. Mọi người bật loa lên rồi cùng trải nghiệm thử với mình nhé!", voice="Phạm Tuyên")
+elapsed_time = time.time() - start_time
+
 tts.save(audio, "output.wav")
 print("✅ Saved to output.wav")
+
+# Tính RTF (Real-Time Factor)
+sample_rate = 48000
+audio_duration = len(audio) / sample_rate
+rtf = elapsed_time / audio_duration
+
+print(f"\n⏱️  Thời gian xử lý: {elapsed_time:.3f}s")
+print(f"🎵 Thời lượng audio: {audio_duration:.3f}s")
+print(f"📊 RTF: {rtf:.4f}  ({'nhanh hơn' if rtf < 1 else 'chậm hơn'} real-time {1/rtf:.2f}x)" if rtf > 0 else "")
 
 # List the built-in voices
 voices = tts.list_preset_voices()
