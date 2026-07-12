@@ -100,16 +100,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 The `vieneu` SDK **defaults to VieNeu-TTS v3 Turbo (48 kHz)**. The minimal install is **torch-free**: on CPU everything runs on **ONNX Runtime** (PyTorch is never imported), and on a CUDA machine it auto-switches to the PyTorch engine — where inference is **batched automatically** (same API, no code change).
 
-> ⚡ **On CPU the backbone runs `int8` by default** — ~1.6× faster and ~4× smaller than fp32, with voice quality preserved. Want maximum fidelity instead? Pass `Vieneu(precision="fp32")` (slower on CPU). `precision` only affects the CPU/ONNX path; on GPU it's ignored (PyTorch).
->
-> ```python
-> tts = Vieneu()                    # int8 backbone (default, fastest on CPU)
-> tts = Vieneu(precision="fp32")    # fp32 backbone (max quality, slower on CPU)
-> ```
-
 ### Quick Start
 
 **CPU (default)** — torch-free, runs v3 Turbo via ONNX Runtime. Most users want this:
+> ⚡**On CPU the backbone runs `int8` by default** — ~1.6× faster and ~4× smaller than fp32, with voice quality preserved. Want maximum fidelity instead? Pass `Vieneu(precision="fp32")` (slower on CPU). `precision` only affects the CPU/ONNX path; on GPU it's ignored (PyTorch).
 
 ```bash
 pip install vieneu
