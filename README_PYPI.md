@@ -29,7 +29,7 @@ pip install vieneu
 
 ```bash
 pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
-pip install "transformers>=4.51"   # Qwen3 backbone + MOSS codec
+pip install "transformers==4.57.6"   # Qwen3 backbone + MOSS codec (pinned — most stable for the GPU SDK)
 pip install vieneu
 ```
 
