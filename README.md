@@ -127,8 +127,7 @@ import time
 from vieneu import Vieneu
 
 # Default = v3 Turbo (48 kHz). GPU → PyTorch (auto-detected).
-vieneu = Vieneu()
-# 💡 On a GPU machine you can still switch to ONNX/CPU if you prefer: Vieneu(backend="onnx")
+vieneu = Vieneu() # On a GPU machine you can still switch to ONNX/CPU if you prefer: Vieneu(backend="onnx")
 
 # 1. Built-in voice by name — no reference clip needed
 print("🔊 Generating speech...")
