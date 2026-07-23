@@ -132,6 +132,55 @@ def split_into_chapters(text: str) -> list[tuple[str, str]]:
     return chapters
 
 
+def merge_short_chunks(chunks: list[str], max_len: int = 240) -> list[str]:
+    """Merge consecutive short chunks so each is close to max_len characters.
+
+    split_text_into_chunks splits at newlines, producing one chunk per book line.
+    Short lines like '"Câm mồm đi."' (13 chars) confuse the TTS model and cause
+    it to generate mostly silence. Merging gives the model enough context.
+    """
+    merged, current = [], ""
+    for chunk in chunks:
+        if not current:
+            current = chunk
+        elif len(current) + 1 + len(chunk) <= max_len:
+            current += " " + chunk
+        else:
+            merged.append(current)
+            current = chunk
+    if current:
+        merged.append(current)
+    return merged
+
+
+def trim_silence_if_long(
+    wav: np.ndarray,
+    sample_rate: int,
+    threshold: float = 0.003,
+    max_silence_ms: float = 500,
+    pad_ms: float = 200,
+) -> np.ndarray:
+    """Trim leading/trailing silence only when it exceeds max_silence_ms.
+
+    threshold=0.003 is low enough to detect soft nasal consonants (M, N, L)
+    so they are protected by the pad and never clipped.  Natural pauses under
+    500ms are left untouched; only abnormally long silences (e.g. the 10-20s
+    the model generates for short phrases like "Hai giờ,") get trimmed.
+    When the entire clip is silent the model produced nothing useful — replace
+    it with a minimal placeholder so the SRT entry still exists but adds no gap.
+    """
+    above = np.abs(wav) > threshold
+    if not np.any(above):
+        return np.zeros(int(0.05 * sample_rate), dtype=np.float32)
+    indices = np.where(above)[0]
+    first, last = int(indices[0]), int(indices[-1])
+    pad = int(pad_ms / 1000 * sample_rate)
+    max_sil = int(max_silence_ms / 1000 * sample_rate)
+    start = max(0, first - pad) if first > max_sil else 0
+    end = min(len(wav), last + pad) if (len(wav) - 1 - last) > max_sil else len(wav)
+    return wav[start:end]
+
+
 def render_chapter(
     tts: Vieneu,
     title: str,
@@ -152,14 +201,6 @@ def render_chapter(
     srt_entries: list[tuple[float, float, str]] = []
     cursor = 0.0
 
-    # Title — rendered as a single chunk
-    title_wav = tts.infer(title, **infer_kwargs)
-    title_dur = len(title_wav) / sample_rate
-    srt_entries.append((cursor, cursor + title_dur, title))
-    cursor += title_dur + title_gap
-    all_wavs.append(title_wav)
-    all_wavs.append(np.zeros(int(title_gap * sample_rate), dtype=np.float32))
-
     def _inject_bumper() -> None:
         nonlocal cursor
         all_wavs.append(np.zeros(int(silence_p * sample_rate), dtype=np.float32))
@@ -167,13 +208,24 @@ def render_chapter(
         all_wavs.append(np.zeros(int(silence_p * sample_rate), dtype=np.float32))
         cursor += silence_p + len(bumper_wav) / sample_rate + silence_p
 
-    # Collect all body chunks so we can decide injection points upfront
-    text_chunks = split_text_into_chunks(body)
-    sentence_pairs = list(zip(text_chunks, tts.infer_stream(body, **infer_kwargs)))
-
-    # Beginning bumper — always inject if bumpers provided
+    # Beginning bumper — before the title
     if bumper_wav is not None:
         _inject_bumper()
+
+    # Title
+    title_wav = trim_silence_if_long(tts.infer(title, **infer_kwargs), sample_rate)
+    title_dur = len(title_wav) / sample_rate
+    srt_entries.append((cursor, cursor + title_dur, title))
+    cursor += title_dur + title_gap
+    all_wavs.append(title_wav)
+    all_wavs.append(np.zeros(int(title_gap * sample_rate), dtype=np.float32))
+
+    # Merge short lines into bigger chunks so the TTS model has enough context
+    text_chunks = merge_short_chunks(split_text_into_chunks(body))
+    sentence_pairs = [
+        (chunk, trim_silence_if_long(tts.infer(chunk, **infer_kwargs), sample_rate))
+        for chunk in text_chunks
+    ]
 
     # Middle bumpers — only if chapter is long enough to warrant them
     injection_indices: set[int] = set()
@@ -250,7 +302,7 @@ def main() -> None:
     infer_kwargs = dict(
         voice=args.voice,
         ref_audio=args.ref_audio,
-        temperature=0.6,
+        temperature=0.5,
     )
 
     # Pre-render bumper (done once, reused across all chapters)
@@ -282,11 +334,22 @@ def main() -> None:
         if out_wav.exists() and out_srt.exists():
             print(f"  Chapter {idx} ({title[:60]}): already exists — skipping")
             if args.merge:
+                import re as _re
                 import soundfile as sf
                 audio, _ = sf.read(str(out_wav), dtype="float32")
                 chapter_wavs.append(audio)
-                # SRT timestamps will be rebuilt with offset during merge
-                chapter_srts.append(None)
+                raw = out_srt.read_text(encoding="utf-8")
+                entries = []
+                for m in _re.finditer(
+                    r"\d+\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n(.+?)(?=\n\n|\Z)",
+                    raw, _re.DOTALL
+                ):
+                    def _ts(t):
+                        h, mi, s_ms = t.split(":")
+                        s, ms = s_ms.split(",")
+                        return int(h)*3600 + int(mi)*60 + int(s) + int(ms)/1000
+                    entries.append((_ts(m.group(1)), _ts(m.group(2)), m.group(3).strip()))
+                chapter_srts.append(entries if entries else None)
             continue
 
         print(f"  Rendering chapter {idx}/{len(chapters)}: {title[:60]}")
