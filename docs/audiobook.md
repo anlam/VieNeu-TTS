@@ -1,15 +1,23 @@
 # Audiobook Generator
 
-Converts a `.txt` file into per-chapter WAV + SRT subtitle files using VieNeu TTS.
+Converts a book into per-chapter WAV + SRT subtitle files using VieNeu TTS.
+
+Supports two input modes:
+- **Single `.txt` file** — chapters are detected automatically by heading keywords
+- **Folder of `.txt` files** — each file is one chapter, sorted by filename
 
 ## Basic usage
 
 ```bash
+# Single file — chapters split automatically by headings
 python examples/audiobook.py book.txt --voice "Bình An" --out output/audiobook/
+
+# Folder — one .txt file per chapter
+python examples/audiobook.py chapters/ --voice "Bình An" --out output/audiobook/
 ```
 
 Each chapter is saved as `01_mo_dau.wav` + `01_mo_dau.srt`, `02_chuong_mot.wav` + `02_chuong_mot.srt`, … in the output directory.  
-The chapter title (e.g. "Chương Một") is spoken aloud before the chapter body.  
+The chapter title is spoken aloud before the chapter body.  
 Rerunning automatically skips chapters whose output files already exist.
 
 ## Options
@@ -23,6 +31,8 @@ Rerunning automatically skips chapters whose output files already exist.
 | `--title-gap` | `0.8` | Seconds of silence between the title announcement and the chapter body. |
 | `--merge` | off | Also produce a combined `full_book.wav` + `full_book.srt`. |
 | `--chapter-gap` | `1.5` | Silence between chapters in `full_book.wav` (only with `--merge`). |
+| `--bumper` | — | Path to a txt file with channel promo texts, one per line. |
+| `--bumper-interval` | `10` | Target minutes between mid-chapter bumper injections (default: 10). |
 
 ## Available voices
 
@@ -46,9 +56,11 @@ for label, voice_id in tts.list_preset_voices():
 | Bình An | Male | Calm |
 | Ngọc Linh | Female | Bright |
 
-## Chapter detection
+## Input formats
 
-The script automatically splits the text on lines that match common heading patterns:
+### Single file
+
+The script splits on heading lines that match common patterns:
 
 | Pattern | Examples |
 |---|---|
@@ -57,7 +69,24 @@ The script automatically splits the text on lines that match common heading patt
 | Roman numerals | `I.`, `IV.`, `XII.` |
 | Plain numbers | `1.`, `12.` |
 
-Matching is case-insensitive. Any text before the first heading is automatically captured as a prologue. Sections with no body are silently skipped.
+Matching is case-insensitive. A heading is recognised if it is either:
+- A **short standalone line** (≤ 30 chars after the keyword) — for books with single newlines between sections
+- A line **surrounded by blank lines** on both sides — for books using blank-line paragraph separation, any heading length allowed
+
+Any text before the first heading is automatically captured as a prologue. Sections with no body are silently skipped.
+
+### Folder of files
+
+Name each file so they sort in reading order:
+
+```
+chapters/
+  01_mo_dau.txt
+  02_chuong_mot.txt
+  03_chuong_hai.txt
+```
+
+The **first line** of each file is used as the spoken chapter title; the rest is the body. If a file has only one line, the filename is used as the title and the full content as the body.
 
 ## Examples
 
@@ -83,6 +112,10 @@ The output directory must exist before redirecting the log file. Create it first
 mkdir -p output/audiobook && nohup python -u examples/audiobook.py book.txt --voice "Bình An" --ref-audio sample_BinhAn.wav --out output/audiobook/ > output/audiobook/log.txt 2>&1 &
 ```
 
+```bash
+mkdir -p output/audiobook && nohup python -u examples/audiobook.py book.txt --voice "Bình An" --ref-audio sample_BinhAn.wav --bumper bumper.txt --out output/audiobook/ > output/audiobook/log.txt 2>&1 &
+```
+
 Monitor progress:
 
 ```bash
@@ -105,52 +138,57 @@ kill <PID>
 
 Each chapter produces a `.srt` file with sentence-level timestamps alongside the `.wav`. If `--merge` is used, a `full_book.srt` is also generated with timestamps offset across the entire book.
 
-### Verifying the SRT
 
-Inspect the file directly:
+## Generating video for YouTube
 
-```bash
-cat output/audiobook/01_mo_dau.srt | head -20
-```
-
-Check that the SRT duration matches the audio duration:
+Since subtitles cannot be displayed on audio-only files, convert each chapter to MP4 first using a cover image. The `scale` filter ensures dimensions are divisible by 2 as required by h264, and works for any image size.
 
 ```bash
-python3 -c "
-total = 0
-with open('output/audiobook/01_mo_dau.srt') as f:
-    for line in f:
-        if '-->' in line:
-            end = line.split('-->')[1].strip()
-            h,m,s = end.replace(',','.').split(':')
-            total = float(h)*3600 + float(m)*60 + float(s)
-print(f'SRT duration: {total:.1f}s')
-"
+ffmpeg -loop 1 -i output/audiobook/cover.jpg -i output/audiobook/01_mo_dau.wav \
+       -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+       -c:v libx264 -c:a aac -shortest \
+       output/audiobook/01_mo_dau.mp4
 ```
 
-Play with subtitles using ffplay:
+### Option 1 — Burn subtitles into the video (hardcoded)
+
+Subtitles are permanently visible. Good for direct file distribution.
 
 ```bash
-ffplay -i output/audiobook/01_mo_dau.wav -vf "subtitles=output/audiobook/01_mo_dau.srt"
+ffmpeg -loop 1 -i output/audiobook/cover.jpg -i output/audiobook/01_mo_dau.wav \
+       -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2,subtitles=output/audiobook/01_mo_dau.srt" \
+       -c:v libx264 -c:a aac -shortest \
+       output/audiobook/01_mo_dau.mp4
 ```
 
-## Copying to Mac and playing
+### Option 2 — Upload SRT separately to YouTube (recommended)
 
-Copy a chapter from the server to your Mac (run on Mac terminal):
+Upload the video without burned subtitles, then in YouTube Studio go to **Subtitles → Add** and upload the `.srt` file. Viewers can toggle subtitles on/off, and YouTube indexes the full text for search.
+
+
+## Channel bumper / promo injection
+
+To promote your channel during playback, create a `bumper.txt` file with one promo line per line:
+
+```
+Bạn đang nghe truyện trên kênh ABC, xin hãy nhấn like và đăng ký kênh nhé!
+Đừng quên nhấn chuông để không bỏ lỡ các tập tiếp theo trên kênh ABC!
+Cảm ơn bạn đã theo dõi kênh ABC, hẹn gặp lại ở tập tiếp theo!
+```
+
+Then pass it with `--bumper`:
 
 ```bash
-scp user@your-server:~/workspace/tts/VieNeu-TTS/output/audiobook/01_mo_dau.* ~/Downloads/
+python examples/audiobook.py book.txt --voice "Bình An" \
+    --bumper bumper.txt --bumper-interval 10 \
+    --out output/audiobook/
 ```
 
-Copy the entire output folder:
-
-```bash
-scp -r user@your-server:~/workspace/tts/VieNeu-TTS/output/audiobook/ ~/Downloads/audiobook/
-```
-
-**Playing on Mac:**
-- **IINA** (recommended, free) — drag the `.wav` onto IINA; it auto-detects the `.srt` if both files share the same name in the same folder. Download at [iina.io](https://iina.io)
-- **VLC** — drag the `.wav` in, then `Subtitles → Add Subtitle File` to load the `.srt`
+**How it works:**
+- A random bumper line is spoken at the **beginning** of every chapter (after the title)
+- A random bumper line is spoken at the **end** of every chapter
+- Additional bumpers are injected **in the middle** roughly every `--bumper-interval` minutes, but only if the chapter is longer than that interval — short chapters get none
+- Bumpers are **not shown in the SRT subtitles**, but all surrounding subtitle timestamps remain correct
 
 ## Accent consistency
 

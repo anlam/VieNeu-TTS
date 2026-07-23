@@ -1,12 +1,14 @@
 """
-Audiobook generator — reads a .txt file and produces one .wav + .srt per chapter.
+Audiobook generator — produces one .wav + .srt per chapter.
+
+Supports two input modes:
+  - Single .txt file: chapters are split on headings (Chương, Chapter, Phần, …)
+  - Folder of .txt files: each file is one chapter, sorted by filename.
+    First line of each file = chapter title; rest = body.
 
 Usage:
     python examples/audiobook.py book.txt --voice "Ngọc Linh" --out outputs/audiobook/
-
-The script splits the input on chapter headings (lines starting with "Chương",
-"Chapter", "Phần", "Mở đầu", etc.).  If no headings are found it treats the
-whole file as a single chapter.
+    python examples/audiobook.py chapters/ --voice "Ngọc Linh" --out outputs/audiobook/
 
 Each chapter is saved as  01_mo_dau.wav + 01_mo_dau.srt, 02_chuong_mot.wav + …
 Use --merge to also produce a combined full_book.wav + full_book.srt.
@@ -14,6 +16,7 @@ Rerunning skips chapters whose output file already exists.
 """
 
 import argparse
+import random
 import re
 import sys
 import time
@@ -28,7 +31,13 @@ from vieneu_utils.core_utils import split_text_into_chunks
 # ── chapter splitter ─────────────────────────────────────────────────────────
 
 _CHAPTER_RE = re.compile(
-    r"^\s*(?:Chương|Chapter|Phần|Mở\s+đầu|Lời\s+mở\s+đầu|Vĩ\s+thanh|Kết|Epilogue|Prologue|Lời\s+tựa|Lời\s+kết)\b.*$"
+    # Rule 1: blank line on both sides (or file boundary) — any heading length
+    r"(?:(?<=\n\n)|\A)\s*"
+    r"(?:Chương|Chapter|Phần|Mở\s+đầu|Lời\s+mở\s+đầu|Vĩ\s+thanh|Kết|Epilogue|Prologue|Lời\s+tựa|Lời\s+kết)\b"
+    r"[^\n]*(?=\n\n|\Z)"
+    r"|"
+    # Rule 2: short standalone line ≤ 30 chars after keyword — single-newline format
+    r"^\s*(?:Chương|Chapter|Phần|Mở\s+đầu|Lời\s+mở\s+đầu|Vĩ\s+thanh|Kết|Epilogue|Prologue|Lời\s+tựa|Lời\s+kết)\b[^\n]{0,30}$"
     r"|^\s*[IVXLCDM]+\.\s*$"          # Roman numeral headings
     r"|^\s*\d+\.\s*$",                 # Plain number headings  e.g. "3."
     re.MULTILINE | re.IGNORECASE,
@@ -76,6 +85,28 @@ def slugify(title: str, max_len: int = 40) -> str:
     return slug[:max_len].strip("_") or "chapter"
 
 
+def chapters_from_folder(folder: Path) -> list[tuple[str, str]]:
+    """Each .txt file in folder (sorted by name) is one chapter.
+    First line = title, remaining lines = body.
+    """
+    txt_files = sorted(folder.glob("*.txt"))
+    if not txt_files:
+        sys.exit(f"No .txt files found in {folder}")
+    chapters = []
+    for f in txt_files:
+        content = f.read_text(encoding="utf-8").strip()
+        if not content:
+            continue
+        lines = content.splitlines()
+        title = lines[0].strip()
+        body = "\n".join(lines[1:]).strip()
+        if not body:
+            title = f.stem
+            body = content
+        chapters.append((title, body))
+    return chapters
+
+
 def split_into_chapters(text: str) -> list[tuple[str, str]]:
     """Return [(title, body), …].  Falls back to one chapter if no headings."""
     matches = list(_CHAPTER_RE.finditer(text))
@@ -108,8 +139,14 @@ def render_chapter(
     infer_kwargs: dict,
     silence_p: float,
     title_gap: float,
+    bumper_wav: np.ndarray | None = None,
+    bumper_interval: float = 600.0,
 ) -> tuple[np.ndarray, list[tuple[float, float, str]]]:
-    """Render a chapter and return (audio, srt_entries) with timestamps."""
+    """Render a chapter and return (audio, srt_entries) with timestamps.
+
+    bumper_wavs are injected at random positions between sentences.
+    They are excluded from SRT entries but cursor advances correctly.
+    """
     sample_rate = tts.sample_rate
     all_wavs: list[np.ndarray] = []
     srt_entries: list[tuple[float, float, str]] = []
@@ -123,20 +160,47 @@ def render_chapter(
     all_wavs.append(title_wav)
     all_wavs.append(np.zeros(int(title_gap * sample_rate), dtype=np.float32))
 
-    # Body — chunk by chunk via infer_stream to get per-sentence timestamps
-    text_chunks = split_text_into_chunks(body)
-    audio_stream = tts.infer_stream(body, **infer_kwargs)
+    def _inject_bumper() -> None:
+        nonlocal cursor
+        all_wavs.append(np.zeros(int(silence_p * sample_rate), dtype=np.float32))
+        all_wavs.append(bumper_wav)
+        all_wavs.append(np.zeros(int(silence_p * sample_rate), dtype=np.float32))
+        cursor += silence_p + len(bumper_wav) / sample_rate + silence_p
 
-    for sentence, wav in zip(text_chunks, audio_stream):
+    # Collect all body chunks so we can decide injection points upfront
+    text_chunks = split_text_into_chunks(body)
+    sentence_pairs = list(zip(text_chunks, tts.infer_stream(body, **infer_kwargs)))
+
+    # Beginning bumper — always inject if bumpers provided
+    if bumper_wav is not None:
+        _inject_bumper()
+
+    # Middle bumpers — only if chapter is long enough to warrant them
+    injection_indices: set[int] = set()
+    if bumper_wav is not None and len(sentence_pairs) > 1:
+        est_body_dur = sum(len(w) / sample_rate + silence_p for _, w in sentence_pairs)
+        if est_body_dur > bumper_interval:
+            n_bumpers = max(0, int(est_body_dur / bumper_interval))
+            n_bumpers = min(n_bumpers, 5, len(sentence_pairs) - 1)
+            if n_bumpers > 0:
+                injection_indices = set(random.sample(range(1, len(sentence_pairs)), n_bumpers))
+
+    for i, (sentence, wav) in enumerate(sentence_pairs):
+        if i in injection_indices:
+            _inject_bumper()
+
         dur = len(wav) / sample_rate
         srt_entries.append((cursor, cursor + dur, sentence))
         cursor += dur + silence_p
         all_wavs.append(wav)
         all_wavs.append(np.zeros(int(silence_p * sample_rate), dtype=np.float32))
 
-    # Drop the trailing silence after the last chunk
-    if all_wavs:
-        all_wavs.pop()
+    # End bumper — reuse trailing silence as pre-gap, then append bumper
+    if bumper_wav is not None:
+        all_wavs.append(bumper_wav)  # trailing silence from loop acts as the gap
+        cursor += len(bumper_wav) / sample_rate
+    else:
+        all_wavs.pop()  # drop trailing silence
 
     audio = np.concatenate(all_wavs)
     return audio, srt_entries
@@ -146,7 +210,7 @@ def render_chapter(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="VieNeu audiobook generator")
-    parser.add_argument("input", help="Path to the .txt book file")
+    parser.add_argument("input", help="Path to a .txt book file or a folder of per-chapter .txt files")
     parser.add_argument("--voice", default=None, help="Preset voice name (default: Ngọc Lan)")
     parser.add_argument("--ref-audio", default=None, help="Reference WAV for voice cloning")
     parser.add_argument("--out", default="outputs/audiobook", help="Output directory")
@@ -158,18 +222,26 @@ def main() -> None:
                         help="Also produce a combined full_book.wav + full_book.srt")
     parser.add_argument("--chapter-gap", type=float, default=1.5,
                         help="Silence gap between chapters in full_book.wav (default: 1.5s, only with --merge)")
+    parser.add_argument("--bumper", default=None,
+                        help="Path to txt file with channel promo texts, one per line")
+    parser.add_argument("--bumper-interval", type=float, default=10.0,
+                        help="Target minutes between bumper injections (default: 10)")
     args = parser.parse_args()
 
-    txt_path = Path(args.input)
-    if not txt_path.exists():
-        sys.exit(f"File not found: {txt_path}")
+    input_path = Path(args.input)
+    if not input_path.exists():
+        sys.exit(f"Not found: {input_path}")
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    text = txt_path.read_text(encoding="utf-8")
-    chapters = split_into_chapters(text)
-    print(f"Found {len(chapters)} chapter(s) in {txt_path.name}")
+    if input_path.is_dir():
+        chapters = chapters_from_folder(input_path)
+        print(f"Found {len(chapters)} chapter(s) in {input_path.name}/")
+    else:
+        text = input_path.read_text(encoding="utf-8")
+        chapters = split_into_chapters(text)
+        print(f"Found {len(chapters)} chapter(s) in {input_path.name}")
 
     tts = Vieneu()
     sample_rate = tts.sample_rate
@@ -180,6 +252,18 @@ def main() -> None:
         ref_audio=args.ref_audio,
         temperature=0.6,
     )
+
+    # Pre-render bumper (done once, reused across all chapters)
+    bumper_wav: np.ndarray | None = None
+    if args.bumper:
+        bumper_path = Path(args.bumper)
+        if not bumper_path.exists():
+            sys.exit(f"Bumper file not found: {bumper_path}")
+        bumper_text = " ".join(l.strip() for l in bumper_path.read_text(encoding="utf-8").splitlines() if l.strip())
+        if bumper_text:
+            print("Pre-rendering bumper…")
+            bumper_wav = tts.infer(bumper_text, **infer_kwargs)
+            print(f"  Bumper duration: {fmt_duration(len(bumper_wav)/sample_rate)} | interval: every ~{args.bumper_interval:.0f} min")
 
     chapter_wavs: list[np.ndarray] = []
     chapter_srts: list[list[tuple[float, float, str]]] = []
@@ -209,7 +293,9 @@ def main() -> None:
 
         t0 = time.time()
         audio, srt_entries = render_chapter(
-            tts, title, body, infer_kwargs, args.silence, args.title_gap
+            tts, title, body, infer_kwargs, args.silence, args.title_gap,
+            bumper_wav=bumper_wav,
+            bumper_interval=args.bumper_interval * 60,
         )
         elapsed = time.time() - t0
 

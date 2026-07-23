@@ -23,6 +23,7 @@ merged_models_cache/
 *.wav
 book.txt
 audiobook.log
+bumper.txt
 
 outputs/
 output/
