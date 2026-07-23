@@ -13,6 +13,32 @@ from typing import Any, Generator, List, Optional, Union
 import numpy as np
 
 from .base import BaseVieneuTTS
+
+
+def _compress_silence(wav: np.ndarray, sample_rate: int, threshold: float = 0.003, max_silence_ms: float = 400) -> np.ndarray:
+    """Cap any contiguous silence segment in wav to max_silence_ms.
+
+    Prevents the engine from producing multi-second pauses at sentence
+    boundaries inside short chunks (e.g. "Địt mẹ, Hollander. Cậu yêu nó mà.").
+    """
+    above = np.abs(wav) > threshold
+    if not np.any(above) or np.all(above):
+        return wav
+    max_sil = int(max_silence_ms / 1000 * sample_rate)
+    changes = np.diff(above.astype(np.int8), prepend=above[0], append=above[-1])
+    boundaries = np.where(changes != 0)[0]
+    parts, i = [], 0
+    for b in boundaries:
+        seg = wav[i:b]
+        if len(seg) and not above[i] and len(seg) > max_sil:
+            parts.append(seg[:max_sil])
+        elif len(seg):
+            parts.append(seg)
+        i = b
+    if i < len(wav):
+        seg = wav[i:]
+        parts.append(seg[:max_sil] if (not above[i] and len(seg) > max_sil) else seg)
+    return np.concatenate(parts) if parts else wav
 from vieneu_utils.phonemize_text import phonemize_text_with_emotions
 from vieneu_utils.core_utils import split_text_into_chunks, join_audio_chunks
 
@@ -200,6 +226,7 @@ class V3TurboVieNeuTTS(BaseVieneuTTS):
                 temperature=temperature, top_k=top_k, top_p=top_p,
                 max_new_frames=max_new_frames, repetition_penalty=repetition_penalty,
             )
+            wav = _compress_silence(wav, self.sample_rate)
             all_wavs.append(wav)
 
         final_wav = join_audio_chunks(all_wavs, self.sample_rate, silence_p, crossfade_p)
