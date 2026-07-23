@@ -258,6 +258,7 @@ class V3TurboVieNeuTTS(BaseVieneuTTS):
                 temperature=temperature, top_k=top_k, top_p=top_p,
                 max_new_frames=max_new_frames, repetition_penalty=repetition_penalty,
             )
+            wav = _compress_silence(wav, self.sample_rate)
             yield self._apply_watermark(wav) if apply_watermark else wav
 
     def infer_batch(

@@ -132,12 +132,14 @@ def split_into_chapters(text: str) -> list[tuple[str, str]]:
     return chapters
 
 
-def merge_short_chunks(chunks: list[str], max_len: int = 240) -> list[str]:
+def merge_short_chunks(chunks: list[str], max_len: int = 150) -> list[str]:
     """Merge consecutive short chunks so each is close to max_len characters.
 
     split_text_into_chunks splits at newlines, producing one chunk per book line.
     Short lines like '"Câm mồm đi."' (13 chars) confuse the TTS model and cause
     it to generate mostly silence. Merging gives the model enough context.
+    150 chars is the safe upper bound — longer chunks risk the model hitting its
+    natural EOS before finishing all sentences in the merged text.
     """
     merged, current = [], ""
     for chunk in chunks:
