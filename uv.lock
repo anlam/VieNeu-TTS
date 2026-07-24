@@ -3824,6 +3824,23 @@ wheels = [
 ]
 
 [[package]]
+name = "pymupdf"
+version = "1.28.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/8e/e9/6d6c5d6c0a3551bffd47681a6240caf941727f195b45593cf20ab36f018f/pymupdf-1.28.0.tar.gz", hash = "sha256:e53f3567403a92da15caa9e7ae0164327fff48817e9f40175367fb9de524258d", size = 87637751, upload-time = "2026-06-29T09:08:47.547Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c8/b7/88043e38cc7529de070f0c9bd267fa258035cca0b4ad5260536b994594a7/pymupdf-1.28.0-cp310-abi3-macosx_10_15_x86_64.whl", hash = "sha256:892b89ba88e8f98b53133b62877a9dc9b5e7dc6a4aeb837b612db56a8d2e03ac", size = 24597385, upload-time = "2026-06-29T09:03:30.608Z" },
+    { url = "https://files.pythonhosted.org/packages/33/f4/23775bbda0781b61fc398cc75079a2b0e64696d8fcf93271748883e9627e/pymupdf-1.28.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:4d692dcf44d3566ae96bc6f6346c6ad432274a29ba617bf7a9fe18009e24adb4", size = 23828292, upload-time = "2026-06-29T09:03:46.129Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/f5/bf75fc7a415722f8b33662054f82d88520c0cbfd4c36d0e08aeaec605e49/pymupdf-1.28.0-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:47a5c29ed4eb0744de9c4e37bb49b1259b18d4d75fcc8a7c130f7c9fa15956f6", size = 25045507, upload-time = "2026-06-29T09:04:03.86Z" },
+    { url = "https://files.pythonhosted.org/packages/58/69/5d12c9f1f2d76f28383d6110a069c79fbfced5a4f97bb1ee6e8354f52bb7/pymupdf-1.28.0-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:44f0973f5e5edbaec95bc34b64e71d1959d4ee90b1328de1b4f4f5b4fa78673f", size = 25716599, upload-time = "2026-06-29T09:04:19.367Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/b4/ec0e017bc42857cc86bd651441dbc41cc18be48d4698ecd27aac491e0c9a/pymupdf-1.28.0-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:4d61ec323a706e153a12e262e51febfb43eeaa20977785ace135d18d48bcdc83", size = 25940489, upload-time = "2026-06-29T09:04:36.624Z" },
+    { url = "https://files.pythonhosted.org/packages/06/86/f831fef09013f33b3c9c09fb3923f2ff53e1e437f6ace14b8ae46392f558/pymupdf-1.28.0-cp310-abi3-win32.whl", hash = "sha256:caea2b3b67347fd79e5d15ed7929b0e886aac594ea228073b6d39de0078189da", size = 18489703, upload-time = "2026-06-29T20:50:30.599Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/5d/1a03f53eb0449900469335fcfc742ca28e3ba159b7d650e0921d50b8b308/pymupdf-1.28.0-cp310-abi3-win_amd64.whl", hash = "sha256:e01e90fd86abfeb37ceb921eddb951f988a11d45ff6ce6b7664f2039849068ec", size = 19773102, upload-time = "2026-06-29T09:04:49.773Z" },
+    { url = "https://files.pythonhosted.org/packages/72/f6/1e52ce243ca792254f6223b4017c5667194c146ce9b88baf37bc5eb3d1c9/pymupdf-1.28.0-cp313-abi3-pyemscripten_2025_0_wasm32.whl", hash = "sha256:74c6d00ba2a9aad3a635db73b07c15db462b480741d831a34a75a56535ebc22b", size = 18357011, upload-time = "2026-06-29T20:50:50.353Z" },
+    { url = "https://files.pythonhosted.org/packages/62/b1/46b5b3d8ef3cc71114667cf10c4d8b33f39af97253af32e9a0986775b638/pymupdf-1.28.0-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:b3e1399c7a64c6914239116a369efcdaac4cfb9e838bde2656d7accc4a85c72d", size = 25753599, upload-time = "2026-06-29T09:05:09.398Z" },
+]
+
+[[package]]
 name = "pytest"
 version = "9.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -4572,16 +4589,16 @@ wheels = [
 
 [[package]]
 name = "sea-g2p"
-version = "0.7.6"
+version = "0.7.20"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f8/ab/662b0b3513e1079d0377fad25fbb6b8b78608e4a682c190222a9b89b6516/sea_g2p-0.7.6.tar.gz", hash = "sha256:d0b17fe023b5ae528027774b1189abb5540fc6c008ad383ed253fd5f21675746", size = 20053597, upload-time = "2026-06-10T07:13:50.045Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e2/69/33a40141b29c2716fde69e6abd90e6854de01a1bf5206c19c1c974bf0fbd/sea_g2p-0.7.20.tar.gz", hash = "sha256:c12988c52fc598bc0c91831691005556784033c36b7341ca7349ec56155befa4", size = 20070720, upload-time = "2026-07-12T11:13:52.059Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2e/6d/34e348d5ebea9e3cc1824d66b344fe25d0f31dc3a8048f9cc0e31a130d56/sea_g2p-0.7.6-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:f25d0b107f19cbdaf090893045a111b68cd0be231f884c4bc511291512bf2010", size = 21373380, upload-time = "2026-06-10T07:13:35.118Z" },
-    { url = "https://files.pythonhosted.org/packages/7b/91/5b6a04040748d6369582f8f23e1d28df50aec91fddf50f9dc28e06f7b764/sea_g2p-0.7.6-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:7a950dc04ae4ed1f5d87b626a7eb6d6baafdcf0e1e786f5ffb9c3cc422e10889", size = 21324967, upload-time = "2026-06-10T07:13:37.625Z" },
-    { url = "https://files.pythonhosted.org/packages/77/e1/5e4faee0da3663ada997a7156359b49b3205b2a6773909ff2d77f0de205d/sea_g2p-0.7.6-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:6ac90ff89dff3ac729e6340629364192afda4f6fde50621a259c87a19a1f2664", size = 21472504, upload-time = "2026-06-10T07:13:40.147Z" },
-    { url = "https://files.pythonhosted.org/packages/a7/c2/b4bbf5cdc8dea3dde546fc761437108cb9b1db1c0a180c4209e4759fd8e8/sea_g2p-0.7.6-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e11cf603224c2146eb12b86c5d46056e27d1a7f97eab1298ed035be495c24804", size = 21484561, upload-time = "2026-06-10T07:13:42.56Z" },
-    { url = "https://files.pythonhosted.org/packages/a3/d5/6e5276170509b8e5da5c6b2ff457ffc0cac540415437d5656e9b1e70a997/sea_g2p-0.7.6-cp310-abi3-win32.whl", hash = "sha256:74f2fd365796b0e6693ee8ddc73d8478dacaa37695e1ced159265757a3d5f685", size = 21095290, upload-time = "2026-06-10T07:13:45.273Z" },
-    { url = "https://files.pythonhosted.org/packages/c7/27/a8857c2f1a6db407d6d119364967fef74136da94fde96e95ed4f006ab345/sea_g2p-0.7.6-cp310-abi3-win_amd64.whl", hash = "sha256:5447ce7b7fe769aca3b9e941626c55e2259327120a4266cfc1fa36094bfe361d", size = 21201107, upload-time = "2026-06-10T07:13:47.683Z" },
+    { url = "https://files.pythonhosted.org/packages/f7/8d/5e17d11f1330875ad40a0d5c680c86954ca18a6f394974f3324693e271b0/sea_g2p-0.7.20-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:e67dd4f5cd87b696a2babc4b9f6aaa8637c65eacc8f28491c94d2dadeed4bd83", size = 21403634, upload-time = "2026-07-12T11:13:38.351Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/ab/2f0ab01895fd8c15eccd39c0f1bffee1f3c4619cab0815afe96bc25a0dcc/sea_g2p-0.7.20-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:6c298e3540695fdba3c7bead1f808dfa110249c3e6df20ed4d507f26fe451aa9", size = 21350947, upload-time = "2026-07-12T11:13:40.744Z" },
+    { url = "https://files.pythonhosted.org/packages/34/74/cf79082be5cab724843b2d2163295e0f3ea74698f2d926deec93a7b9daa1/sea_g2p-0.7.20-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:49f7d4d18e01d63fbfb1d73a046b5e2d9f97428fc964bb40d3c5cfc79278eeb9", size = 21503158, upload-time = "2026-07-12T11:13:42.996Z" },
+    { url = "https://files.pythonhosted.org/packages/0f/84/e1b8a0c80e90e2bec75f2a61c2996c7ee605c6e14f3a2011eb411d608e9e/sea_g2p-0.7.20-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6e118b66781aef8ce297290ffe9fb328824898d8d35849dbd241cd0b0f2732bc", size = 21507324, upload-time = "2026-07-12T11:13:45.105Z" },
+    { url = "https://files.pythonhosted.org/packages/af/4b/9e686b391d708879edf318b74e2583bf9fd1ca26ba7cc64ff43bb74dd33a/sea_g2p-0.7.20-cp310-abi3-win32.whl", hash = "sha256:cbf3717257b552b339a4d299b9fe9c630a6541e348b57cd9874c9fb2a8754606", size = 21118779, upload-time = "2026-07-12T11:13:47.255Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/08/a83a945ec5855e23af6fe5d85e68dd2eabb1deede9092ad1183405aa2d3d/sea_g2p-0.7.20-cp310-abi3-win_amd64.whl", hash = "sha256:9edd57c91569c01994aadef53671d501a61286b24532937e5ee514468bcf6b51", size = 21243949, upload-time = "2026-07-12T11:13:49.643Z" },
 ]
 
 [[package]]
@@ -5463,7 +5480,7 @@ wheels = [
 
 [[package]]
 name = "vieneu"
-version = "3.0.5"
+version = "3.2.3"
 source = { editable = "." }
 dependencies = [
     { name = "gradio" },
@@ -5482,7 +5499,7 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-gpu = [
+legacy = [
     { name = "accelerate", marker = "sys_platform == 'darwin'" },
     { name = "librosa" },
     { name = "llama-cpp-python", version = "0.3.16", source = { registry = "https://abetlen.github.io/llama-cpp-python/whl/metal/" }, marker = "sys_platform == 'darwin'" },
@@ -5500,6 +5517,9 @@ gpu = [
     { name = "transformers", version = "5.7.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version == '3.11.*' and sys_platform == 'win32') or (python_full_version >= '3.13' and sys_platform == 'win32') or sys_platform == 'darwin'" },
     { name = "triton", marker = "sys_platform == 'linux'" },
     { name = "triton-windows", marker = "sys_platform == 'win32'" },
+]
+pdf = [
+    { name = "pymupdf" },
 ]
 
 [package.dev-dependencies]
@@ -5534,35 +5554,36 @@ gpu = [
 
 [package.metadata]
 requires-dist = [
-    { name = "accelerate", marker = "sys_platform == 'darwin' and extra == 'gpu'" },
+    { name = "accelerate", marker = "sys_platform == 'darwin' and extra == 'legacy'" },
     { name = "gradio", specifier = ">=5.49.1" },
     { name = "huggingface-hub" },
-    { name = "librosa", marker = "extra == 'gpu'", specifier = ">=0.11.0" },
-    { name = "llama-cpp-python", marker = "sys_platform == 'darwin' and extra == 'gpu'", specifier = "==0.3.16", index = "https://abetlen.github.io/llama-cpp-python/whl/metal/" },
-    { name = "llama-cpp-python", marker = "sys_platform != 'darwin' and sys_platform != 'win32' and extra == 'gpu'", specifier = "==0.3.16", index = "https://pypi.org/simple" },
-    { name = "llama-cpp-python", marker = "python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'gpu'", url = "https://github.com/pnnbao97/VieNeu-TTS/releases/download/wheels-v0.3.16/llama_cpp_python-0.3.16-cp312-cp312-win_amd64.whl" },
-    { name = "llama-cpp-python", marker = "python_full_version != '3.12.*' and sys_platform == 'win32' and extra == 'gpu'", specifier = "==0.3.16" },
-    { name = "lmdeploy", marker = "(python_full_version != '3.12.*' and sys_platform == 'linux' and extra == 'gpu') or (python_full_version != '3.12.*' and sys_platform == 'win32' and extra == 'gpu') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'gpu')" },
-    { name = "lmdeploy", marker = "python_full_version == '3.12.*' and sys_platform == 'linux' and extra == 'gpu'", url = "https://github.com/InternLM/lmdeploy/releases/download/v0.11.0/lmdeploy-0.11.0+cu128-cp312-cp312-manylinux2014_x86_64.whl" },
-    { name = "lmdeploy", marker = "python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'gpu'", url = "https://github.com/InternLM/lmdeploy/releases/download/v0.11.0/lmdeploy-0.11.0+cu128-cp312-cp312-win_amd64.whl" },
-    { name = "neucodec", marker = "extra == 'gpu'", specifier = ">=0.0.4" },
+    { name = "librosa", marker = "extra == 'legacy'", specifier = ">=0.11.0" },
+    { name = "llama-cpp-python", marker = "sys_platform == 'darwin' and extra == 'legacy'", specifier = "==0.3.16", index = "https://abetlen.github.io/llama-cpp-python/whl/metal/" },
+    { name = "llama-cpp-python", marker = "sys_platform != 'darwin' and sys_platform != 'win32' and extra == 'legacy'", specifier = "==0.3.16", index = "https://pypi.org/simple" },
+    { name = "llama-cpp-python", marker = "python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'legacy'", url = "https://github.com/pnnbao97/VieNeu-TTS/releases/download/wheels-v0.3.16/llama_cpp_python-0.3.16-cp312-cp312-win_amd64.whl" },
+    { name = "llama-cpp-python", marker = "python_full_version != '3.12.*' and sys_platform == 'win32' and extra == 'legacy'", specifier = "==0.3.16" },
+    { name = "lmdeploy", marker = "(python_full_version != '3.12.*' and sys_platform == 'linux' and extra == 'legacy') or (python_full_version != '3.12.*' and sys_platform == 'win32' and extra == 'legacy') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'legacy')" },
+    { name = "lmdeploy", marker = "python_full_version == '3.12.*' and sys_platform == 'linux' and extra == 'legacy'", url = "https://github.com/InternLM/lmdeploy/releases/download/v0.11.0/lmdeploy-0.11.0+cu128-cp312-cp312-manylinux2014_x86_64.whl" },
+    { name = "lmdeploy", marker = "python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'legacy'", url = "https://github.com/InternLM/lmdeploy/releases/download/v0.11.0/lmdeploy-0.11.0+cu128-cp312-cp312-win_amd64.whl" },
+    { name = "neucodec", marker = "extra == 'legacy'", specifier = ">=0.0.4" },
     { name = "numpy" },
     { name = "onnxruntime", specifier = ">=1.20.0" },
     { name = "perth", specifier = ">=0.2.0" },
+    { name = "pymupdf", marker = "extra == 'pdf'", specifier = ">=1.25.0" },
     { name = "pyyaml" },
-    { name = "sea-g2p", specifier = ">=0.7.6" },
+    { name = "sea-g2p", specifier = ">=0.7.20" },
     { name = "soundfile" },
     { name = "soxr" },
     { name = "tokenizers", specifier = ">=0.20" },
-    { name = "torch", marker = "sys_platform == 'darwin' and extra == 'gpu'", index = "https://pypi.org/simple" },
-    { name = "torch", marker = "sys_platform != 'darwin' and extra == 'gpu'", index = "https://download.pytorch.org/whl/cu128" },
-    { name = "torchaudio", marker = "sys_platform == 'darwin' and extra == 'gpu'", index = "https://pypi.org/simple" },
-    { name = "torchaudio", marker = "sys_platform != 'darwin' and extra == 'gpu'", index = "https://download.pytorch.org/whl/cu128" },
-    { name = "transformers", marker = "extra == 'gpu'" },
-    { name = "triton", marker = "sys_platform == 'linux' and extra == 'gpu'" },
-    { name = "triton-windows", marker = "sys_platform == 'win32' and extra == 'gpu'" },
+    { name = "torch", marker = "sys_platform == 'darwin' and extra == 'legacy'", index = "https://pypi.org/simple" },
+    { name = "torch", marker = "sys_platform != 'darwin' and extra == 'legacy'", index = "https://download.pytorch.org/whl/cu128" },
+    { name = "torchaudio", marker = "sys_platform == 'darwin' and extra == 'legacy'", index = "https://pypi.org/simple" },
+    { name = "torchaudio", marker = "sys_platform != 'darwin' and extra == 'legacy'", index = "https://download.pytorch.org/whl/cu128" },
+    { name = "transformers", marker = "extra == 'legacy'" },
+    { name = "triton", marker = "sys_platform == 'linux' and extra == 'legacy'" },
+    { name = "triton-windows", marker = "sys_platform == 'win32' and extra == 'legacy'" },
 ]
-provides-extras = ["gpu"]
+provides-extras = ["legacy", "pdf"]
 
 [package.metadata.requires-dev]
 dev = [

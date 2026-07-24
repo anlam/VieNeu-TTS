@@ -42,21 +42,17 @@ class V3TurboBatchEngine:
 
     @torch.no_grad()
     def _prompt_embeds(self, req) -> torch.Tensor:
-        cfg = self.config
-        # Built-in default voices carry a speaker reserved token (``voice_token_id``)
-        # that overrides the emotion tag; cloned voices leave it None.
-        voice_token_id = req.get("voice_token_id")
-        if voice_token_id is not None:
-            emo = int(voice_token_id)
-        else:
-            emo = cfg.emotion_0_token_id if req.get("emotion", "natural") == "natural" else cfg.emotion_4_token_id
+        # Each request carries its own style, reference (speaker_emb + ref_codes) and
+        # optional use_ref_codes switch. The speaker anchor is added to every prefill row.
+        style_id = self.tts._resolve_style_id(req.get("style", "tu_nhien"))
         phonemes = req.get("phonemes")
         if phonemes is None:
             from vieneu_utils.phonemize_text import phonemize_text_with_emotions
             phonemes = phonemize_text_with_emotions(req["text"])
-        ref_codes = req.get("ref_codes")
-        prompt_2d = self.tts._build_prompt_2d("", ref_codes, None, emo, phonemes=phonemes)
-        return self.model._build_inputs_embeds(prompt_2d.unsqueeze(0).to(self.tts.device))[0]  # (T, H)
+        ref_codes = req.get("ref_codes") if req.get("use_ref_codes", True) else None
+        spk = self.tts._resolve_speaker_emb(req.get("speaker_emb"))
+        prompt_2d = self.tts._build_prompt_2d(phonemes, None, ref_codes, style_id)
+        return self.model._build_inputs_embeds(prompt_2d.unsqueeze(0).to(self.tts.device), speaker_emb=spk)[0]  # (T, H)
 
     @torch.no_grad()
     def generate_batch(
@@ -91,6 +87,11 @@ class V3TurboBatchEngine:
         embeds_list = [self._prompt_embeds(r) for r in requests]
         B = len(requests)
 
+        # Per-request speaker anchor, stacked to (B, D), re-added at every decode step
+        # (broadcast over the single new row). None when the model has no speaker encoder.
+        spk_list = [self.tts._resolve_speaker_emb(r.get("speaker_emb")) for r in requests]
+        batch_spk = torch.cat(spk_list, dim=0) if (spk_list and spk_list[0] is not None) else None
+
         # Per-row, per-codebook history for the repetition penalty (matches the
         # single-path decode_one_frame). None when the penalty is disabled.
         history = ([[set() for _ in range(n_vq)] for _ in range(B)]
@@ -124,7 +125,7 @@ class V3TurboBatchEngine:
             slot = torch.full((B, 1, n_vq + 1), pad, dtype=torch.long, device=dev)
             slot[:, :, 0] = sgs
             slot[:, 0, 1:] = codes
-            se = self.model._build_inputs_embeds(slot)
+            se = self.model._build_inputs_embeds(slot, speaker_emb=batch_spk)
             h, cache, mask, pos = self.bb.decode_step(se, cache, mask, pos)
 
         wavs: List[np.ndarray] = []

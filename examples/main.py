@@ -19,16 +19,16 @@ def main():
     # Mode="standard" (default) runs locally. 
     # By default, it uses "pnnbao-ump/VieNeu-TTS-0.3B-q4-gguf" (Backbone)
     # and "neuphonic/distill-neucodec" (Codec) for maximum speed.
-    tts = Vieneu()
+    vieneu = Vieneu()
     
     # Optional: If you want to force use a specific PyTorch model:
-    # tts = Vieneu(backbone_repo="pnnbao-ump/VieNeu-TTS-0.3B", codec_repo="neuphonic/distill-neucodec", backbone_device="cuda", codec_device="cuda")
+    # vieneu = Vieneu(backbone_repo="pnnbao-ump/VieNeu-TTS-0.3B", codec_repo="neuphonic/distill-neucodec", backbone_device="cuda", codec_device="cuda")
 
     # ---------------------------------------------------------
     # PART 2: LIST PRESET VOICES
     # ---------------------------------------------------------
     # The SDK returns (Description, ID) tuples
-    available_voices = tts.list_preset_voices()
+    available_voices = vieneu.list_preset_voices()
     print(f"📋 Found {len(available_voices)} preset voices.")
     
     if available_voices:
@@ -46,12 +46,12 @@ def main():
         print(f"👤 Selecting voice: {my_voice_id}")
         
         # Get reference data for this specific voice
-        voice_data = tts.get_preset_voice(my_voice_id)
+        voice_data = vieneu.get_preset_voice(my_voice_id)
         
         test_text = f"Chào bạn, tôi đang nói bằng giọng của bác sĩ Tuyên."
-        audio_spec = tts.infer(text=test_text, voice=voice_data)
+        audio_spec = vieneu.infer(text=test_text, voice=voice_data)
         
-        tts.save(audio_spec, f"outputs/standard_{my_voice_id}.wav")
+        vieneu.save(audio_spec, f"outputs/standard_{my_voice_id}.wav")
         print(f"💾 Saved {my_voice_id} synthesis to: outputs/standard_{my_voice_id}.wav")
 
     # ---------------------------------------------------------
@@ -62,8 +62,8 @@ def main():
     
     print("🎧 Synthesizing speech...")
     # By default, it uses the model's 'default_voice'
-    audio = tts.infer(text=text)
-    tts.save(audio, "outputs/standard_output.wav")
+    audio = vieneu.infer(text=text)
+    vieneu.save(audio, "outputs/standard_output.wav")
     print("💾 Saved synthesized speech to: outputs/standard_output.wav")
 
     # ---------------------------------------------------------
@@ -76,19 +76,19 @@ def main():
     if os.path.exists(ref_audio):
         print("\n--- PART 5: Voice Cloning ---")
         print(f"🦜 Cloning voice from: {ref_audio}")
-        cloned_audio = tts.infer(
+        cloned_audio = vieneu.infer(
             text="Đây là giọng nói đã được clone thành công từ file mẫu.",
             ref_audio=ref_audio,
             ref_text=ref_text
         )
-        tts.save(cloned_audio, "outputs/standard_cloned_output.wav")
+        vieneu.save(cloned_audio, "outputs/standard_cloned_output.wav")
         print("💾 Saved cloned voice to: outputs/standard_cloned_output.wav")
 
     # ---------------------------------------------------------
     # PART 6: CLEANUP
     # ---------------------------------------------------------
     # Explicitly release resources
-    tts.close()
+    vieneu.close()
     print("\n✅ All tasks completed!")
 
 if __name__ == "__main__":

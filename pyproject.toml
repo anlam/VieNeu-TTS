@@ -13,7 +13,7 @@ override-dependencies = [
     "nvidia-nccl-cu12; sys_platform == 'linux'",
 ]
 # uv mặc định cài nhóm `dev`; đặt rỗng để `uv sync` chỉ cài core torch-free.
-# Muốn dev/test: `uv sync --group dev`. Muốn GPU: `uv sync --group gpu` hoặc `--extra gpu`.
+# Muốn dev/test: `uv sync --group dev`. Muốn dev GPU đầy đủ: `uv sync --group gpu`
 default-groups = []
 
 [[tool.uv.index]]
@@ -33,7 +33,7 @@ explicit = true
 
 [project]
 name = "vieneu"
-version = "3.0.5"
+version = "3.2.3"
 description = "Advanced on-device Vietnamese TTS with instant voice cloning"
 readme = "README_PYPI.md"
 license = { file = "LICENSE" }
@@ -64,10 +64,11 @@ authors = [
 ]
 requires-python = ">=3.10"
 # Minimal, TORCH-FREE core. `pip install vieneu` runs VieNeu-TTS v3 Turbo on CPU
-# via ONNX Runtime. GPU / older backends (torch, transformers, llama-cpp, lmdeploy,
-# librosa) live in the optional [gpu] extra.
+# via ONNX Runtime. GPU is a manual step (install a CUDA torch + transformers
+# yourself — there is no [gpu] extra; see [project.optional-dependencies] below);
+# legacy backends (llama-cpp, lmdeploy, librosa, neucodec) live in the [legacy] extra.
 dependencies = [
-    "sea-g2p>=0.7.6",       # phonemizer (Rust, torch-free) — needs punc_norm (>=0.7.6)
+    "sea-g2p>=0.7.20",      # phonemizer (Rust, torch-free) — cần hàm punc_norm() (>=0.7.11)
     "onnxruntime>=1.20.0",  # runs the v3 transformers + MOSS codec
     "numpy",
     "soundfile",            # audio I/O
@@ -88,9 +89,7 @@ dependencies = [
 "Changelog" = "https://github.com/pnnbao97/VieNeu-TTS/releases"
 
 [project.optional-dependencies]
-# GPU + older backends (v1/v2 PyTorch & GGUF, v3 Turbo on GPU). Adds the heavy deps
-# that the minimal/ONNX install deliberately omits.
-gpu = [
+legacy = [
     "torch",
     "torchaudio",
     "transformers",
@@ -101,6 +100,12 @@ gpu = [
     "triton; sys_platform == 'linux'",
     "accelerate; sys_platform == 'darwin'",
     "llama-cpp-python==0.3.16",
+]
+
+# PDF text extraction. Separate from core to keep the minimal install torch-free.
+# Install with: pip install vieneu[pdf]
+pdf = [
+    "PyMuPDF>=1.25.0",
 ]
 
 [dependency-groups]

@@ -317,6 +317,7 @@ def main() -> None:
         voice=args.voice,
         ref_audio=args.ref_audio,
         temperature=0.5,
+        style="doc_truyen",
     )
 
     # Pre-render bumper (done once, reused across all chapters)
