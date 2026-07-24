@@ -132,27 +132,36 @@ def split_into_chapters(text: str) -> list[tuple[str, str]]:
     return chapters
 
 
-def merge_short_chunks(chunks: list[str], max_len: int = 150) -> list[str]:
-    """Merge consecutive short chunks so each is close to max_len characters.
+def _chunk_max_frames(text: str) -> int:
+    """Cap max_new_frames proportional to text length (1 frame = 80ms @ 12.5Hz).
 
-    split_text_into_chunks splits at newlines, producing one chunk per book line.
-    Short lines like '"Câm mồm đi."' (13 chars) confuse the TTS model and cause
-    it to generate mostly silence. Merging gives the model enough context.
-    150 chars is the safe upper bound — longer chunks risk the model hitting its
-    natural EOS before finishing all sentences in the merged text.
+    For short inputs the model finishes the speech quickly but keeps generating
+    codec artifacts for the remaining frames. This cap stops that: ~1.5 frames
+    per character plus a 30-frame safety buffer, capped at the global default.
     """
-    merged, current = [], ""
-    for chunk in chunks:
-        if not current:
-            current = chunk
-        elif len(current) + 1 + len(chunk) <= max_len:
-            current += " " + chunk
-        else:
-            merged.append(current)
-            current = chunk
-    if current:
-        merged.append(current)
-    return merged
+    return min(300, max(30, int(len(text) * 1.5) + 30))
+
+
+def merge_short_chunks(chunks: list[str], min_len: int = 40, max_len: int = 100) -> list[str]:
+    """Merge a short chunk (< min_len) with its next chunk only if result stays ≤ max_len.
+
+    Never chains more than two lines together — this keeps merged chunks short
+    enough that the model reliably completes all sentences (>100 chars risked
+    early EOS and dropped trailing sentences in tests).
+    """
+    result = []
+    i = 0
+    while i < len(chunks):
+        chunk = chunks[i]
+        if len(chunk) < min_len and i + 1 < len(chunks):
+            merged = chunk + " " + chunks[i + 1]
+            if len(merged) <= max_len:
+                result.append(merged)
+                i += 2
+                continue
+        result.append(chunk)
+        i += 1
+    return result
 
 
 def trim_silence_if_long(
@@ -222,12 +231,15 @@ def render_chapter(
     all_wavs.append(title_wav)
     all_wavs.append(np.zeros(int(title_gap * sample_rate), dtype=np.float32))
 
-    # Merge short lines into bigger chunks so the TTS model has enough context
+    # Short lines (< 40 chars) are merged with the next line only if the result
+    # stays ≤ 100 chars — gives the model enough phoneme context to produce clean
+    # speech without triggering early EOS that dropped sentences in longer merges.
+    # Dynamic max_new_frames caps artifact generation for each chunk length.
     text_chunks = merge_short_chunks(split_text_into_chunks(body))
-    sentence_pairs = [
-        (chunk, trim_silence_if_long(tts.infer(chunk, **infer_kwargs), sample_rate))
-        for chunk in text_chunks
-    ]
+    sentence_pairs = []
+    for chunk in text_chunks:
+        wav = tts.infer(chunk, max_new_frames=_chunk_max_frames(chunk), **infer_kwargs)
+        sentence_pairs.append((chunk, trim_silence_if_long(wav, sample_rate)))
 
     # Middle bumpers — only if chapter is long enough to warrant them
     injection_indices: set[int] = set()
@@ -341,16 +353,17 @@ def main() -> None:
                 audio, _ = sf.read(str(out_wav), dtype="float32")
                 chapter_wavs.append(audio)
                 raw = out_srt.read_text(encoding="utf-8")
-                entries = []
-                for m in _re.finditer(
-                    r"\d+\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n(.+?)(?=\n\n|\Z)",
-                    raw, _re.DOTALL
-                ):
-                    def _ts(t):
-                        h, mi, s_ms = t.split(":")
-                        s, ms = s_ms.split(",")
-                        return int(h)*3600 + int(mi)*60 + int(s) + int(ms)/1000
-                    entries.append((_ts(m.group(1)), _ts(m.group(2)), m.group(3).strip()))
+                def _ts(t):
+                    h, mi, s_ms = t.split(":")
+                    s, ms = s_ms.split(",")
+                    return int(h)*3600 + int(mi)*60 + int(s) + int(ms)/1000
+                entries = [
+                    (_ts(m.group(1)), _ts(m.group(2)), m.group(3).strip())
+                    for m in _re.finditer(
+                        r"\d+\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n(.+?)(?=\n\n|\Z)",
+                        raw, _re.DOTALL
+                    )
+                ]
                 chapter_srts.append(entries if entries else None)
             continue
 
