@@ -7,12 +7,31 @@ Supports two input modes:
     First line of each file = chapter title; rest = body.
 
 Usage:
-    python examples/audiobook.py book.txt --voice "Ngọc Linh" --out outputs/audiobook/
-    python examples/audiobook.py chapters/ --voice "Ngọc Linh" --out outputs/audiobook/
+    python examples/audiobook.py book.txt --voice "Bình An" --ref-audio sample.wav --out output/audiobook/
+    python examples/audiobook.py chapters/ --voice "Bình An" --out output/audiobook/
 
-Each chapter is saved as  01_mo_dau.wav + 01_mo_dau.srt, 02_chuong_mot.wav + …
+Each chapter is saved as 01_mo_dau.wav + 01_mo_dau.srt, 02_chuong_mot.wav + …
 Use --merge to also produce a combined full_book.wav + full_book.srt.
-Rerunning skips chapters whose output file already exists.
+Rerunning skips chapters whose output files already exist.
+
+Audio pipeline mirrors tts.infer() exactly (normalize_to_chunks_v3_with_gaps →
+_infer_chunks GPU batch → _compress_silence → join with variable gap silences),
+so quality and speed match audiobook_simple.py. SRT timestamps are derived from
+the exact duration of each 256-char chunk as it is generated.
+
+The chapter title is prepended to the body so the model reads it as one
+continuous passage — avoids the short-utterance artifacts of speaking the title
+in isolation.
+
+Options:
+  --voice           Preset voice name (default: Ngọc Lan)
+  --ref-audio       Reference WAV for voice cloning
+  --out             Output directory (default: outputs/audiobook)
+  --merge           Also produce full_book.wav + full_book.srt
+  --chapter-gap     Silence between chapters in full_book (default: 1.5s)
+  --bumper          Path to .txt file with promo lines (one per line)
+  --bumper-interval Target minutes between bumper injections (default: 10)
+  --silence         Silence padding around bumpers in seconds (default: 0.3)
 """
 
 import argparse
@@ -25,7 +44,9 @@ from pathlib import Path
 
 import numpy as np
 from vieneu import Vieneu
-from vieneu_utils.core_utils import split_text_into_chunks
+from vieneu.v3turbo import _compress_silence
+from vieneu_utils.core_utils import join_audio_chunks, gaps_to_silence
+from vieneu_utils.phonemize_text import normalize_to_chunks_v3_with_gaps
 
 
 # ── chapter splitter ─────────────────────────────────────────────────────────
@@ -112,7 +133,7 @@ def split_into_chapters(text: str) -> list[tuple[str, str]]:
     matches = list(_CHAPTER_RE.finditer(text))
 
     if not matches:
-        return [("Chapter 1", text.strip())]
+        return [("", text.strip())]
 
     chapters: list[tuple[str, str]] = []
 
@@ -132,65 +153,6 @@ def split_into_chapters(text: str) -> list[tuple[str, str]]:
     return chapters
 
 
-def _chunk_max_frames(text: str) -> int:
-    """Cap max_new_frames proportional to text length (1 frame = 80ms @ 12.5Hz).
-
-    For short inputs the model finishes the speech quickly but keeps generating
-    codec artifacts for the remaining frames. This cap stops that: ~1.5 frames
-    per character plus a 30-frame safety buffer, capped at the global default.
-    """
-    return min(300, max(30, int(len(text) * 1.5) + 30))
-
-
-def merge_short_chunks(chunks: list[str], min_len: int = 40, max_len: int = 100) -> list[str]:
-    """Merge a short chunk (< min_len) with its next chunk only if result stays ≤ max_len.
-
-    Never chains more than two lines together — this keeps merged chunks short
-    enough that the model reliably completes all sentences (>100 chars risked
-    early EOS and dropped trailing sentences in tests).
-    """
-    result = []
-    i = 0
-    while i < len(chunks):
-        chunk = chunks[i]
-        if len(chunk) < min_len and i + 1 < len(chunks):
-            merged = chunk + " " + chunks[i + 1]
-            if len(merged) <= max_len:
-                result.append(merged)
-                i += 2
-                continue
-        result.append(chunk)
-        i += 1
-    return result
-
-
-def trim_silence_if_long(
-    wav: np.ndarray,
-    sample_rate: int,
-    threshold: float = 0.003,
-    max_silence_ms: float = 500,
-    pad_ms: float = 200,
-) -> np.ndarray:
-    """Trim leading/trailing silence only when it exceeds max_silence_ms.
-
-    threshold=0.003 is low enough to detect soft nasal consonants (M, N, L)
-    so they are protected by the pad and never clipped.  Natural pauses under
-    500ms are left untouched; only abnormally long silences (e.g. the 10-20s
-    the model generates for short phrases like "Hai giờ,") get trimmed.
-    When the entire clip is silent the model produced nothing useful — replace
-    it with a minimal placeholder so the SRT entry still exists but adds no gap.
-    """
-    above = np.abs(wav) > threshold
-    if not np.any(above):
-        return np.zeros(int(0.05 * sample_rate), dtype=np.float32)
-    indices = np.where(above)[0]
-    first, last = int(indices[0]), int(indices[-1])
-    pad = int(pad_ms / 1000 * sample_rate)
-    max_sil = int(max_silence_ms / 1000 * sample_rate)
-    start = max(0, first - pad) if first > max_sil else 0
-    end = min(len(wav), last + pad) if (len(wav) - 1 - last) > max_sil else len(wav)
-    return wav[start:end]
-
 
 def render_chapter(
     tts: Vieneu,
@@ -198,14 +160,14 @@ def render_chapter(
     body: str,
     infer_kwargs: dict,
     silence_p: float,
-    title_gap: float,
     bumper_wav: np.ndarray | None = None,
     bumper_interval: float = 600.0,
 ) -> tuple[np.ndarray, list[tuple[float, float, str]]]:
     """Render a chapter and return (audio, srt_entries) with timestamps.
 
-    bumper_wavs are injected at random positions between sentences.
-    They are excluded from SRT entries but cursor advances correctly.
+    All sentence chunks are batched in a single GPU pass via _infer_chunks so
+    throughput matches audiobook_simple.py. SRT timestamps are exact at the
+    chunk boundary level (one entry per sentence chunk).
     """
     sample_rate = tts.sample_rate
     all_wavs: list[np.ndarray] = []
@@ -219,54 +181,54 @@ def render_chapter(
         all_wavs.append(np.zeros(int(silence_p * sample_rate), dtype=np.float32))
         cursor += silence_p + len(bumper_wav) / sample_rate + silence_p
 
-    # Beginning bumper — before the title
     if bumper_wav is not None:
         _inject_bumper()
 
-    # Title
-    title_wav = trim_silence_if_long(tts.infer(title, **infer_kwargs), sample_rate)
-    title_dur = len(title_wav) / sample_rate
-    srt_entries.append((cursor, cursor + title_dur, title))
-    cursor += title_dur + title_gap
-    all_wavs.append(title_wav)
-    all_wavs.append(np.zeros(int(title_gap * sample_rate), dtype=np.float32))
+    full_body = f"{title}. {body}" if (title and body) else (body or title)
 
-    # Short lines (< 40 chars) are merged with the next line only if the result
-    # stays ≤ 100 chars — gives the model enough phoneme context to produce clean
-    # speech without triggering early EOS that dropped sentences in longer merges.
-    # Dynamic max_new_frames caps artifact generation for each chunk length.
-    text_chunks = merge_short_chunks(split_text_into_chunks(body))
-    sentence_pairs = []
-    for chunk in text_chunks:
-        wav = tts.infer(chunk, max_new_frames=_chunk_max_frames(chunk), **infer_kwargs)
-        sentence_pairs.append((chunk, trim_silence_if_long(wav, sample_rate)))
+    # Mirror tts.infer() exactly: same chunker, same batching, same silence strategy
+    chunks, gaps = normalize_to_chunks_v3_with_gaps(full_body, max_chars=256)
+    gap_durs = gaps_to_silence(gaps)  # variable silence per boundary type (para > sentence > minor)
 
-    # Middle bumpers — only if chapter is long enough to warrant them
+    speaker_emb, ref_codes = tts._resolve_ref(
+        infer_kwargs.get("voice"), infer_kwargs.get("ref_audio"), True, True
+    )
+    sampling = dict(
+        temperature=infer_kwargs.get("temperature", 0.8),
+        top_k=25, top_p=0.95, max_new_frames=300, repetition_penalty=1.2,
+    )
+    chunk_wavs = tts._infer_chunks(
+        chunks, speaker_emb, ref_codes,
+        infer_kwargs.get("style", "doc_truyen"), True,
+        tts.max_batch_size, sampling,
+    )
+    chunk_wavs = [_compress_silence(w, sample_rate) for w in chunk_wavs]
+
+    # Middle bumpers — estimate total duration first
     injection_indices: set[int] = set()
-    if bumper_wav is not None and len(sentence_pairs) > 1:
-        est_body_dur = sum(len(w) / sample_rate + silence_p for _, w in sentence_pairs)
-        if est_body_dur > bumper_interval:
-            n_bumpers = max(0, int(est_body_dur / bumper_interval))
-            n_bumpers = min(n_bumpers, 5, len(sentence_pairs) - 1)
+    if bumper_wav is not None and len(chunk_wavs) > 1:
+        est_dur = sum(len(w) / sample_rate for w in chunk_wavs) + sum(gap_durs)
+        if est_dur > bumper_interval:
+            n_bumpers = min(max(0, int(est_dur / bumper_interval)), 5, len(chunk_wavs) - 1)
             if n_bumpers > 0:
-                injection_indices = set(random.sample(range(1, len(sentence_pairs)), n_bumpers))
+                injection_indices = set(random.sample(range(1, len(chunk_wavs)), n_bumpers))
 
-    for i, (sentence, wav) in enumerate(sentence_pairs):
+    for i, (chunk, wav) in enumerate(zip(chunks, chunk_wavs)):
         if i in injection_indices:
             _inject_bumper()
-
         dur = len(wav) / sample_rate
-        srt_entries.append((cursor, cursor + dur, sentence))
-        cursor += dur + silence_p
+        srt_entries.append((cursor, cursor + dur, chunk.capitalize()))
+        cursor += dur
+        gap = gap_durs[i] if i < len(gap_durs) else 0.0
+        cursor += gap
         all_wavs.append(wav)
-        all_wavs.append(np.zeros(int(silence_p * sample_rate), dtype=np.float32))
+        if i < len(gap_durs):
+            all_wavs.append(np.zeros(int(gap_durs[i] * sample_rate), dtype=np.float32))
 
-    # End bumper — reuse trailing silence as pre-gap, then append bumper
     if bumper_wav is not None:
-        all_wavs.append(bumper_wav)  # trailing silence from loop acts as the gap
-        cursor += len(bumper_wav) / sample_rate
-    else:
-        all_wavs.pop()  # drop trailing silence
+        all_wavs.append(np.zeros(int(silence_p * sample_rate), dtype=np.float32))
+        all_wavs.append(bumper_wav)
+        cursor += silence_p + len(bumper_wav) / sample_rate
 
     audio = np.concatenate(all_wavs)
     return audio, srt_entries
@@ -316,7 +278,7 @@ def main() -> None:
     infer_kwargs = dict(
         voice=args.voice,
         ref_audio=args.ref_audio,
-        temperature=0.5,
+        temperature=0.8,
         style="doc_truyen",
     )
 
@@ -372,7 +334,7 @@ def main() -> None:
 
         t0 = time.time()
         audio, srt_entries = render_chapter(
-            tts, title, body, infer_kwargs, args.silence, args.title_gap,
+            tts, title, body, infer_kwargs, args.silence,
             bumper_wav=bumper_wav,
             bumper_interval=args.bumper_interval * 60,
         )
